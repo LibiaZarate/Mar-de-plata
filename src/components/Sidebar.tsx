@@ -1,10 +1,8 @@
 import { NavLink } from "react-router-dom";
-import { useStore } from "../data/store";
+import { useAlertasActivasCount } from "../lib/queries";
 
 export default function Sidebar() {
-  const pipelineCount = useStore(
-    (s) => s.leads.filter((l) => l.flags.some((f) => f === "urgente" || f === "objecion" || f === "comprobante")).length
-  );
+  const { data: alertas } = useAlertasActivasCount();
 
   return (
     <aside className="w-[220px] shrink-0 h-screen sticky top-0 border-r border-ink/15 px-5 py-6 flex flex-col bg-cream-50">
@@ -20,7 +18,7 @@ export default function Sidebar() {
 
       <nav className="flex flex-col gap-1">
         <SidebarItem to="/" label="Inicio" />
-        <SidebarItem to="/pipeline" label="Pipeline" badge={pipelineCount} />
+        <SidebarItem to="/pipeline" label="Pipeline" badge={alertas} />
         <SidebarItem to="/equipo" label="Equipo" />
       </nav>
 

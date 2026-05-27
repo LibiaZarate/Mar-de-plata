@@ -1,119 +1,237 @@
-import { Link } from "react-router-dom";
 import { useState } from "react";
-import {
-  useStore,
-  store,
-  formatMxn,
-  STAGE_LABEL,
-  CHANNEL_LABEL,
-  type Stage,
-  type Lead,
-  type Channel,
-} from "../data/store";
+import { useAsesoras, usePipelineLeads } from "../lib/queries";
+import { actualizarEstadoLead } from "../lib/actions";
 import { Pill } from "../components/ui";
+import { Skeleton, ErrorBanner } from "../components/feedback";
+import type { Lead, LeadEstado } from "../lib/types";
 
-const STAGES: Stage[] = ["nuevas", "preguntando", "cotizada", "esperando_pago", "pagada"];
+const STAGES: { key: LeadEstado; label: string }[] = [
+  { key: "lead_nueva", label: "Nuevas" },
+  { key: "calificada", label: "Calificada" },
+  { key: "esperando_pago", label: "Esperando pago" },
+  { key: "pagada", label: "Pagada" },
+];
 
-const STAGE_TONE: Record<Stage, { bar: string; chip: string; text: string }> = {
-  nuevas: { bar: "bg-skyy-200", chip: "border-skyy-300 bg-skyy-100/40", text: "text-skyy-300" },
-  preguntando: { bar: "bg-lila-200", chip: "border-lila-300 bg-lila-100/40", text: "text-lila-300" },
-  cotizada: { bar: "bg-ambr-200", chip: "border-ambr-300 bg-ambr-100/40", text: "text-ambr-300" },
-  esperando_pago: { bar: "bg-ambr-300", chip: "border-ambr-300 bg-ambr-100/40", text: "text-ambr-300" },
-  pagada: { bar: "bg-sage-200", chip: "border-sage-300 bg-sage-100/40", text: "text-sage-300" },
+const STAGE_TONE: Record<LeadEstado, { border: string; chip: string }> = {
+  lead_nueva: { border: "border-skyy-300", chip: "text-skyy-300" },
+  calificada: { border: "border-lila-300", chip: "text-lila-300" },
+  esperando_pago: { border: "border-ambr-300", chip: "text-ambr-300" },
+  pagada: { border: "border-sage-300", chip: "text-sage-300" },
+  perdida: { border: "border-rosey-300", chip: "text-rosey-400" },
+};
+
+const CANAL_BORDER: Record<string, string> = {
+  Meta: "border-t-skyy-300",
+  TikTok: "border-t-lila-300",
+  Grupo: "border-t-sage-300",
+  Recurrente: "border-t-ambr-300",
+  "Orgánico": "border-t-rosey-300",
+  Organico: "border-t-rosey-300",
 };
 
 export default function Pipeline() {
-  const leads = useStore((s) => s.leads);
-  const [filter, setFilter] = useState<Channel | "all">("all");
-  const [advisor, setAdvisor] = useState<"all" | "eli" | "nat" | "jess">("all");
+  const [canal, setCanal] = useState<string | "all">("all");
+  const [asesoraFilter, setAsesoraFilter] = useState<string | "all">("all");
+  const { data: leads, isLoading, error } = usePipelineLeads(canal, asesoraFilter);
+  const { data: asesoras } = useAsesoras();
 
-  const filtered = leads.filter(
-    (l) => (filter === "all" || l.channel === filter) && (advisor === "all" || l.assignedTo === advisor)
-  );
-
-  const totalPipeline = filtered
-    .filter((l) => l.stage !== "pagada")
-    .reduce((a, l) => a + (l.amount || 0), 0);
+  const grouped: Record<LeadEstado, Lead[]> = {
+    lead_nueva: [],
+    calificada: [],
+    esperando_pago: [],
+    pagada: [],
+    perdida: [],
+  };
+  for (const l of leads ?? []) {
+    if (l.estado && grouped[l.estado]) grouped[l.estado].push(l);
+  }
 
   return (
     <div className="space-y-5">
-      <div className="flex items-end justify-between">
+      <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h1 className="font-serif-display text-5xl leading-none">Pipeline activo</h1>
           <div className="text-[13px] text-ink-mute mt-2">
-            {leads.length} conversaciones en juego · cada tarjeta muestra de dónde vino y quién la mueve
+            {leads?.length ?? 0} conversaciones en juego · datos en vivo de Supabase
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm font-serif-display">{formatMxn(totalPipeline)} MXN en pipeline</span>
-          <FilterDropdown
-            value={filter}
-            onChange={setFilter}
+          <FilterSelect
+            value={canal}
+            onChange={setCanal}
+            label="Canal"
             options={[
-              { value: "all", label: "Todos los canales" },
-              { value: "meta", label: "Meta" },
-              { value: "tiktok", label: "TikTok" },
-              { value: "grupo", label: "Grupo abierto" },
-              { value: "recurrente", label: "Recurrente" },
-              { value: "organico", label: "Orgánico" },
+              { value: "all", label: "Todos" },
+              { value: "Meta", label: "Meta" },
+              { value: "TikTok", label: "TikTok" },
+              { value: "Grupo", label: "Grupo abierto" },
+              { value: "Recurrente", label: "Recurrente" },
+              { value: "Orgánico", label: "Orgánico" },
             ]}
-            label="Filtros"
           />
-          <FilterDropdown
-            value={advisor}
-            onChange={(v) => setAdvisor(v as any)}
+          <FilterSelect
+            value={asesoraFilter}
+            onChange={setAsesoraFilter}
+            label="Asesora"
             options={[
               { value: "all", label: "Todas" },
-              { value: "eli", label: "Eli" },
-              { value: "nat", label: "Nat" },
-              { value: "jess", label: "Jess" },
+              ...(asesoras ?? []).map((a) => ({ value: a.id, label: a.nombre_completo })),
             ]}
-            label="Asesora"
           />
-          <button className="btn-primary text-sm">+ Lead manual</button>
         </div>
       </div>
 
       <div className="text-[12px] text-ink-mute flex items-center gap-4 flex-wrap">
-        <span className="label-xs">Color del borde superior · canal de entrada</span>
-        <div className="flex items-center gap-3">
-          <Legend dot="bg-skyy-300" label="Meta" />
-          <Legend dot="bg-lila-300" label="TikTok" />
-          <Legend dot="bg-sage-300" label="Grupo abierto" />
-          <Legend dot="bg-ambr-300" label="Recurrente" />
-          <Legend dot="bg-rosey-300" label="Orgánico" />
-        </div>
-        <Link to="/pipeline/embudo" className="ml-auto text-rosey-400 italic font-serif-display">
-          Ver mapa del flujo comercial →
-        </Link>
+        <span className="label-xs">Borde superior · canal de entrada</span>
+        <Legend dot="bg-skyy-300" label="Meta" />
+        <Legend dot="bg-lila-300" label="TikTok" />
+        <Legend dot="bg-sage-300" label="Grupo abierto" />
+        <Legend dot="bg-ambr-300" label="Recurrente" />
+        <Legend dot="bg-rosey-300" label="Orgánico" />
       </div>
 
-      <div className="grid grid-cols-5 gap-3">
+      {error && <ErrorBanner message={error.message} />}
+
+      <div className="grid grid-cols-4 gap-3">
         {STAGES.map((st) => (
           <Column
-            key={st}
-            stage={st}
-            leads={filtered.filter((l) => l.stage === st)}
+            key={st.key}
+            stage={st.key}
+            label={st.label}
+            leads={grouped[st.key]}
+            loading={isLoading}
           />
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-3 pt-4">
-        <FooterCard title="Facturación cerrada hoy">
-          <div className="font-serif-display text-3xl">{formatMxn(11240)} MXN</div>
-          <div className="text-[12px] text-ink-mute mt-1">8 pedidos · ticket prom. $1,405</div>
-        </FooterCard>
-        <FooterCard title="Por cerrar en este pipeline">
-          <div className="font-serif-display text-3xl">{formatMxn(28400)} MXN</div>
-          <div className="text-[12px] text-ink-mute mt-1">15 cotizadas + esperando pago</div>
-        </FooterCard>
-        <FooterCard title="Mejor anuncio del mes" tone="rose">
-          <div className="font-serif-display text-2xl leading-tight">Charms Pandora Día de las Madres</div>
-          <div className="text-[12px] text-ink-mute mt-1">142 leads · 38 cerrados · {formatMxn(48200)} generados</div>
-        </FooterCard>
+      {grouped.perdida.length > 0 && (
+        <details className="rounded-md border border-ink/10 bg-cream-50 px-4 py-3">
+          <summary className="cursor-pointer text-[12px] text-ink-mute">
+            Perdidas ({grouped.perdida.length}) · ocultas
+          </summary>
+          <div className="grid grid-cols-4 gap-2 mt-3">
+            {grouped.perdida.slice(0, 8).map((l) => (
+              <LeadCard key={l.numero_whatsapp} lead={l} compact />
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function Column({
+  stage,
+  label,
+  leads,
+  loading,
+}: {
+  stage: LeadEstado;
+  label: string;
+  leads: Lead[];
+  loading?: boolean;
+}) {
+  const [over, setOver] = useState(false);
+  const tone = STAGE_TONE[stage];
+
+  return (
+    <div
+      className={
+        "rounded-md border bg-cream-50 px-2 py-3 min-h-[440px] " +
+        (over ? "border-rosey-300 bg-rosey-50/30" : "border-ink/15")
+      }
+      onDragOver={(e) => {
+        e.preventDefault();
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={async (e) => {
+        setOver(false);
+        const id = e.dataTransfer.getData("text/plain");
+        if (id) {
+          try {
+            await actualizarEstadoLead(id, stage);
+          } catch (err) {
+            alert("No se pudo actualizar el lead: " + (err as Error).message);
+          }
+        }
+      }}
+    >
+      <div className="flex items-center justify-between px-2 mb-3">
+        <span className="label-xs">{label}</span>
+        <span className={`text-[11px] ${tone.chip}`}>{leads.length}</span>
+      </div>
+      <div className="space-y-2.5">
+        {loading && <Skeleton lines={4} />}
+        {!loading && leads.map((l) => <LeadCard key={l.numero_whatsapp} lead={l} />)}
+        {!loading && leads.length === 0 && (
+          <div className="text-[12px] text-ink-mute italic text-center py-6">
+            arrastra aquí
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+function LeadCard({ lead, compact }: { lead: Lead; compact?: boolean }) {
+  const next = nextStage(lead.estado);
+  const canalBorder = CANAL_BORDER[lead.canal_origen ?? ""] ?? "border-t-ink/30";
+  return (
+    <article
+      draggable
+      onDragStart={(e) => e.dataTransfer.setData("text/plain", lead.numero_whatsapp)}
+      className={
+        "bg-cream-50 border border-ink/15 border-t-2 rounded-md px-3 py-2.5 cursor-grab active:cursor-grabbing select-none " +
+        canalBorder
+      }
+    >
+      <div className="flex items-center justify-between mb-1">
+        <span className="label-xs">{lead.canal_origen ?? "—"}</span>
+        <span className="text-[10px] text-ink-mute font-mono truncate max-w-[110px]">
+          {lead.numero_whatsapp}
+        </span>
+      </div>
+      <div className="text-[13px] text-ink font-medium truncate">
+        {lead.nombre || "Sin nombre"}
+      </div>
+      <div className="text-[12px] text-ink-soft mt-0.5">
+        <span className="text-ink-mute">{lead.ciudad ?? "—"}</span>
+      </div>
+      {!compact && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {lead.tipo === "mayoreo" && <Pill tone="rose">Mayoreo</Pill>}
+          {lead.tipo === "menudeo" && <Pill tone="sky">Menudeo</Pill>}
+          {lead.asesora_asignada && (
+            <Pill className="!px-1.5 !text-[10px]">{lead.asesora_asignada}</Pill>
+          )}
+        </div>
+      )}
+      {!compact && next && (
+        <button
+          onClick={() =>
+            actualizarEstadoLead(lead.numero_whatsapp, next).catch((e) =>
+              alert("No se pudo: " + (e as Error).message)
+            )
+          }
+          className="mt-2 w-full text-[11px] py-1 rounded border border-ink/20 hover:bg-cream-100 text-ink-soft"
+        >
+          → {labelFor(next)}
+        </button>
+      )}
+    </article>
+  );
+}
+
+function nextStage(s: LeadEstado | null): LeadEstado | null {
+  if (!s) return "lead_nueva";
+  const idx = STAGES.findIndex((st) => st.key === s);
+  if (idx === -1 || idx === STAGES.length - 1) return null;
+  return STAGES[idx + 1].key;
+}
+
+function labelFor(s: LeadEstado): string {
+  return STAGES.find((x) => x.key === s)?.label ?? s;
 }
 
 function Legend({ dot, label }: { dot: string; label: string }) {
@@ -124,111 +242,14 @@ function Legend({ dot, label }: { dot: string; label: string }) {
   );
 }
 
-function Column({ stage, leads }: { stage: Stage; leads: Lead[] }) {
-  const tone = STAGE_TONE[stage];
-  const [over, setOver] = useState(false);
-
-  return (
-    <div
-      className={
-        "rounded-md border bg-cream-50 px-2 py-3 min-h-[400px] " +
-        (over ? "border-rosey-300 bg-rosey-50/30" : "border-ink/15")
-      }
-      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(e) => {
-        setOver(false);
-        const id = e.dataTransfer.getData("text/plain");
-        if (id) store.moveLead(id, stage);
-      }}
-    >
-      <div className="flex items-center justify-between px-2 mb-3">
-        <span className="label-xs">{STAGE_LABEL[stage]}</span>
-        <span className={`text-[11px] px-1.5 rounded ${tone.text}`}>{leads.length}</span>
-      </div>
-      <div className="space-y-2.5">
-        {leads.map((l) => <LeadCard key={l.id} lead={l} />)}
-        {leads.length === 0 && (
-          <div className="text-[12px] text-ink-mute italic text-center py-6">arrastra aquí</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-const CHANNEL_BORDER: Record<Channel, string> = {
-  meta: "border-t-skyy-300",
-  tiktok: "border-t-lila-300",
-  grupo: "border-t-sage-300",
-  recurrente: "border-t-ambr-300",
-  organico: "border-t-rosey-300",
-};
-
-function LeadCard({ lead }: { lead: Lead }) {
-  const next = nextStage(lead.stage);
-  return (
-    <article
-      draggable
-      onDragStart={(e) => e.dataTransfer.setData("text/plain", lead.id)}
-      className={
-        "bg-cream-50 border border-ink/15 border-t-2 rounded-md px-3 py-2.5 cursor-grab active:cursor-grabbing select-none " +
-        CHANNEL_BORDER[lead.channel]
-      }
-    >
-      <div className="flex items-center justify-between mb-1">
-        <span className="label-xs">{CHANNEL_LABEL[lead.channel]}</span>
-        <span className="text-[10px] text-ink-mute font-mono">{lead.id}</span>
-      </div>
-      <div className="text-[12px] text-ink font-medium truncate">{lead.product}</div>
-      <div className="text-[12px] text-ink-soft mt-1">
-        {lead.name} <span className="text-ink-mute">· {lead.city}</span>
-      </div>
-      {lead.note && <div className="text-[11px] text-ink-mute italic mt-1">{lead.note}</div>}
-      <div className="flex flex-wrap gap-1.5 mt-2">
-        {lead.amount > 0 && (
-          <Pill className="!px-1.5 !text-[10px]">{formatMxn(lead.amount)}</Pill>
-        )}
-        {lead.flags.includes("urgente") && <Pill tone="rose">Urgente</Pill>}
-        {lead.flags.includes("objecion") && <Pill tone="ambr">Objeción</Pill>}
-        {lead.flags.includes("fan") && <Pill tone="sage">Fan</Pill>}
-        {lead.flags.includes("comprobante") && <Pill tone="sky">Comprobante</Pill>}
-        {lead.flags.includes("parcial") && <Pill tone="ambr">Parcial 50%</Pill>}
-      </div>
-      {next && (
-        <button
-          onClick={() => store.moveLead(lead.id, next)}
-          className="mt-2 w-full text-[11px] py-1 rounded border border-ink/20 hover:bg-cream-100 text-ink-soft"
-        >
-          → {STAGE_LABEL[next]}
-        </button>
-      )}
-    </article>
-  );
-}
-
-function nextStage(s: Stage): Stage | null {
-  const idx = STAGES.indexOf(s);
-  if (idx === -1 || idx === STAGES.length - 1) return null;
-  return STAGES[idx + 1];
-}
-
-function FooterCard({ title, tone = "default", children }: { title: string; tone?: "default" | "rose"; children: React.ReactNode }) {
-  return (
-    <div className={"rounded-md border p-4 " + (tone === "rose" ? "border-rosey-300 bg-rosey-50/30" : "border-ink/15 bg-cream-50")}>
-      <div className="label-xs mb-2">{title}</div>
-      {children}
-    </div>
-  );
-}
-
-function FilterDropdown({
+function FilterSelect({
   value,
   onChange,
   options,
   label,
 }: {
   value: string;
-  onChange: (v: any) => void;
+  onChange: (v: string) => void;
   options: { value: string; label: string }[];
   label: string;
 }) {
@@ -238,7 +259,6 @@ function FilterDropdown({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="btn text-sm appearance-none pr-7"
-        style={{ backgroundImage: "none" }}
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>

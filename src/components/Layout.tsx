@@ -1,14 +1,14 @@
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { SWRConfig } from "swr";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
-import RegisterOrderModal from "./RegisterOrderModal";
 import SearchPalette from "./SearchPalette";
 
 export default function Layout() {
-  const [orderOpen, setOrderOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -18,35 +18,33 @@ export default function Layout() {
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
         e.preventDefault();
-        setOrderOpen(true);
+        navigate("/equipo");
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [navigate]);
 
   const breadcrumb = (() => {
-    if (location.pathname.startsWith("/pipeline/embudo")) return ["Inicio", "Pipeline", "Embudo"];
     if (location.pathname.startsWith("/pipeline")) return ["Inicio", "Pipeline"];
     if (location.pathname.startsWith("/equipo")) return ["Inicio", "Equipo"];
-    if (location.pathname.startsWith("/kpis")) return ["Inicio", "KPIs y tendencias"];
-    if (location.pathname.startsWith("/resumen")) return ["Inicio", "Resumen del día"];
     return ["Inicio", "Vista general"];
   })();
 
   return (
-    <div className="flex bg-cream-100 min-h-screen text-ink">
-      <Sidebar />
-      <main className="flex-1 min-w-0 px-10 py-6">
-        <TopBar
-          crumbs={breadcrumb}
-          onSearch={() => setSearchOpen(true)}
-          onRegister={() => setOrderOpen(true)}
-        />
-        <Outlet />
-      </main>
-      {orderOpen && <RegisterOrderModal onClose={() => setOrderOpen(false)} />}
-      {searchOpen && <SearchPalette onClose={() => setSearchOpen(false)} />}
-    </div>
+    <SWRConfig value={{ revalidateOnFocus: true, dedupingInterval: 4000 }}>
+      <div className="flex bg-cream-100 min-h-screen text-ink">
+        <Sidebar />
+        <main className="flex-1 min-w-0 px-10 py-6">
+          <TopBar
+            crumbs={breadcrumb}
+            onSearch={() => setSearchOpen(true)}
+            onRegister={() => navigate("/equipo")}
+          />
+          <Outlet />
+        </main>
+        {searchOpen && <SearchPalette onClose={() => setSearchOpen(false)} />}
+      </div>
+    </SWRConfig>
   );
 }

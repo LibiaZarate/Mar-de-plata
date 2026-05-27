@@ -1,116 +1,133 @@
-import { useState } from "react";
-import { useStore, type Advisor } from "../data/store";
-import { Tabs, Pill } from "../components/ui";
+import { useAsesoras, useMetricasEquipo } from "../lib/queries";
+import { Pill } from "../components/ui";
+import { Skeleton, ErrorBanner } from "../components/feedback";
+import CierresWidget from "../components/CierresWidget";
+import type { Asesora } from "../lib/types";
+
+function fmtMxn(n: number): string {
+  return "$" + Math.round(n).toLocaleString("es-MX");
+}
 
 export default function Equipo() {
-  const advisors = useStore((s) => s.advisors);
-  const [range, setRange] = useState<"hoy" | "sem" | "mes">("hoy");
+  const asesoras = useAsesoras();
+  const metricas = useMetricasEquipo();
 
   return (
     <div className="space-y-5">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="font-serif-display text-5xl leading-none">Tu equipo</h1>
-          <div className="text-[13px] text-ink-mute mt-2">
-            Tres asesoras activas · sin ranking, sin competencia
-          </div>
+      <div>
+        <h1 className="font-serif-display text-5xl leading-none">Tu equipo</h1>
+        <div className="text-[13px] text-ink-mute mt-2">
+          {asesoras.data?.length ?? 0} asesoras activas · sin ranking, sin competencia
         </div>
-        <Tabs
-          value={range}
-          options={[
-            { value: "hoy", label: "Hoy" },
-            { value: "sem", label: "Esta semana" },
-            { value: "mes", label: "Este mes" },
-          ]}
-          onChange={setRange}
-        />
       </div>
 
       <div className="border border-rosey-300 bg-rosey-50/30 rounded-md px-5 py-3 text-[13px] text-ink-soft flex items-start gap-3">
         <span className="font-serif-display italic text-rosey-400 mt-0.5">nota →</span>
         <p>
-          La columna <span className="font-medium">“Mi satisfacción”</span> es la lectura subjetiva de Mar sobre cada asesora (0–10, fijada cada lunes). Pendiente con Mar: definir cómo medir cada una de estas seis variables para mantener control real, sin que se sienta vigilancia.
+          Las métricas que ves vienen de <span className="font-mono text-[12px]">cierres_diarios</span>{" "}
+          y <span className="font-mono text-[12px]">alertas</span> en vivo. El widget de la derecha
+          es el lugar oficial donde Eli y Nat registran cada pago al recibir el comprobante.
         </p>
       </div>
 
+      {asesoras.error && <ErrorBanner message={asesoras.error.message} />}
+
       <div className="grid grid-cols-3 gap-4">
-        {advisors.map((a) => (
-          <AdvisorCard key={a.id} a={a} />
-        ))}
+        <div className="col-span-2 space-y-4">
+          {asesoras.isLoading ? (
+            <Skeleton lines={8} />
+          ) : (asesoras.data ?? []).length === 0 ? (
+            <div className="text-[13px] text-ink-mute italic">No hay asesoras activas en la base de datos todavía.</div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              {(asesoras.data ?? []).map((a) => (
+                <AsesoraCard
+                  key={a.id}
+                  asesora={a}
+                  metrica={metricas.data?.find((m) => m.asesora_id === a.id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        <CierresWidget />
       </div>
     </div>
   );
 }
 
-function AdvisorCard({ a }: { a: Advisor }) {
-  const accent =
-    a.status === "activa" ? "border-sage-300" :
-    a.status === "cerca_del_tope" ? "border-rosey-300 bg-rosey-50/30" :
-    "border-skyy-300";
+function AsesoraCard({
+  asesora,
+  metrica,
+}: {
+  asesora: Asesora;
+  metrica?: {
+    pedidos_hoy: number;
+    monto_hoy: number;
+    alertas_activas: number;
+    conversaciones_hoy: number;
+    pct_cierre: number;
+  };
+}) {
+  const accent = asesora.en_onboarding ? "border-skyy-300" : "border-sage-300";
+  const initials =
+    asesora.nombre_completo
+      .split(" ")
+      .map((w) => w[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "—";
 
   return (
     <div className={`rounded-md border ${accent} bg-cream-50 p-5 flex flex-col gap-3`}>
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full border border-ink/30 flex items-center justify-center text-base font-semibold bg-cream-100">
-            {a.name[0]}
+            {initials}
           </div>
           <div>
-            <div className="font-serif-display text-3xl leading-none">{a.name}</div>
-            <div className="text-[12px] text-ink-mute mt-1">
-              {a.role} {a.since && `· desde ${a.since}`}
+            <div className="font-serif-display text-2xl leading-none">
+              {asesora.nombre_completo}
+            </div>
+            <div className="text-[11px] text-ink-mute mt-1">
+              {asesora.en_onboarding ? "Onboarding" : "Asesora senior"}
+              {asesora.horario_inicio && asesora.horario_fin
+                ? ` · ${asesora.horario_inicio.slice(0, 5)}–${asesora.horario_fin.slice(0, 5)}`
+                : ""}
             </div>
           </div>
         </div>
-        <Pill
-          tone={a.status === "activa" ? "sage" : a.status === "cerca_del_tope" ? "rose" : "sky"}
-        >
-          ● {a.status === "activa" ? "Activa" : a.status === "cerca_del_tope" ? "Cerca del tope · 15 abiertas" : "Aprendiendo"}
-        </Pill>
+        <Pill tone={asesora.en_onboarding ? "sky" : "sage"}>● Disponible</Pill>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <Stat label="Conversaciones" value={a.conversations.toString()} />
-        <Stat label="Resp. promedio" value={`${a.avgResponseMin} min`} />
-        <Stat label="Pedidos cerrados" value={a.closed.toString()} />
-        <Stat label="Mi satisfacción" value={a.selfScore != null ? `${a.selfScore} / 10` : "—"} />
-        <Stat label="Reclamos" value={a.complaints.toString()} />
-        <Stat label="Satisfacción cliente" value={a.satisfaction != null ? `${a.satisfaction}%` : "—"} />
+      <div className="grid grid-cols-2 gap-2 mt-1">
+        <Stat label="Conversaciones hoy" value={(metrica?.conversaciones_hoy ?? 0).toString()} />
+        <Stat label="Pedidos cerrados" value={(metrica?.pedidos_hoy ?? 0).toString()} />
+        <Stat label="Monto generado" value={fmtMxn(metrica?.monto_hoy ?? 0)} />
+        <Stat label="Resp. promedio" value="—" hint="próximamente" />
+        <Stat label="Alertas activas" value={(metrica?.alertas_activas ?? 0).toString()} />
+        <Stat label="% de cierre" value={`${(metrica?.pct_cierre ?? 0).toFixed(0)}%`} />
       </div>
 
-      {a.notes && (
-        <div className="border border-ink/15 rounded-md p-3 mt-1">
-          <div className="label-xs mb-2">Aprendiendo aún</div>
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            {a.notes.learning.map((t) => (
-              <Pill key={t} tone="ambr">{t}</Pill>
-            ))}
+      {asesora.en_onboarding && (
+        <div className="border border-ink/15 rounded-md p-3">
+          <div className="label-xs mb-2">Sugerencias Sirena</div>
+          <div className="text-[12px] text-ink-mute italic">
+            Por configurar — aquí aparecerán los tips que la IA genere para esta persona.
           </div>
-          <div className="label-xs mb-2">Ya domina</div>
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            {a.notes.mastered.map((t) => (
-              <Pill key={t} tone="sage">{t}</Pill>
-            ))}
-          </div>
-          <button className="btn-primary text-xs w-full justify-center">Dejar feedback ✎</button>
         </div>
       )}
-
-      <div className="flex gap-2 mt-auto pt-2">
-        <button className="btn text-xs flex-1 justify-center">Ver conversaciones</button>
-        {a.status === "cerca_del_tope" && (
-          <button className="btn-primary text-xs flex-1 justify-center">Reasignar carga</button>
-        )}
-      </div>
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="border border-ink/15 rounded-md px-3 py-2">
       <div className="label-xs">{label}</div>
       <div className="font-serif-display text-2xl leading-tight">{value}</div>
+      {hint && <div className="text-[10px] text-ink-mute italic">{hint}</div>}
     </div>
   );
 }
