@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sparkles, Send, ShieldAlert, Wrench, Image as ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -20,7 +20,10 @@ type Turn = {
       mode: "production" | "simulator";
       demo: boolean;
       leadCreated: boolean;
-      earlyExit?: { reason: string; plan: { match: { keyword: string; category: string; motivo: string } } } | null;
+      earlyExit?: {
+        reason: string;
+        plan: { match: { keyword: string; category: string; motivo: string } };
+      } | null;
       verificador?: Record<string, unknown>;
       toolResult?: { tool: string; ok: boolean; notes: string[] } | null;
       agenteTexto?: string;
@@ -44,11 +47,14 @@ export function Playground() {
   const [text, setText] = useState("");
   const [numero, setNumero] = useState("5215550000000");
   const [turns, setTurns] = useState<Turn[]>([]);
+  const [pending, setPending] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
   async function send() {
     const t = text.trim();
-    if (!t) return;
+    if (!t || sending) return;
+    setPending(t);
+    setText("");
     setSending(true);
     try {
       const r = await fetch("/api/playground", {
@@ -58,13 +64,13 @@ export function Playground() {
       });
       const data = await r.json();
       setTurns((prev) => [...prev, { user: t, result: data }]);
-      setText("");
     } catch (e) {
       setTurns((prev) => [
         ...prev,
         { user: t, result: { ok: false, error: (e as Error).message } },
       ]);
     } finally {
+      setPending(null);
       setSending(false);
     }
   }
@@ -87,17 +93,18 @@ export function Playground() {
       </div>
 
       <div className="grid grid-cols-[1fr_280px] gap-4">
-        <section className="rounded-lg border border-foreground/15 bg-cream-50 p-5 min-h-[400px] space-y-4 flex flex-col">
-          <div className="flex-1 space-y-4">
-            {turns.length === 0 && (
+        <section className="rounded-lg border border-foreground/15 bg-cream-50 p-5 min-h-[400px] flex flex-col">
+          <div className="flex-1 space-y-4 overflow-y-auto">
+            {turns.length === 0 && !pending && (
               <div className="text-center text-foreground/55 text-[13px] py-12">
                 Tu primera prueba va a aparecer aquí.
               </div>
             )}
             {turns.map((t, i) => <TurnView key={i} turn={t} />)}
+            {pending && <PendingTurn text={pending} />}
           </div>
 
-          <div className="border-t border-foreground/10 pt-3 space-y-2">
+          <div className="border-t border-foreground/10 pt-3 mt-4 space-y-2">
             <div className="flex items-center gap-2">
               <span className="label-xs">número de prueba</span>
               <input
@@ -110,17 +117,18 @@ export function Playground() {
               <input
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && !sending && send()}
+                onKeyDown={(e) => e.key === "Enter" && send()}
                 placeholder="hola, quiero ver catalogo de pandora…"
                 className="flex-1 px-3 py-2 rounded border border-foreground/20 bg-cream-50 text-sm"
+                disabled={sending}
               />
               <button
                 onClick={send}
-                disabled={sending}
+                disabled={sending || !text.trim()}
                 className="inline-flex items-center gap-2 px-3 py-2 rounded bg-rosey-300 hover:bg-rosey-400 text-cream-50 text-sm font-medium disabled:opacity-50"
               >
                 <Send className="h-4 w-4" />
-                {sending ? "…" : "Enviar"}
+                Enviar
               </button>
             </div>
           </div>
@@ -134,7 +142,8 @@ export function Playground() {
                 <li key={s}>
                   <button
                     onClick={() => setText(s)}
-                    className="text-left text-[12px] text-foreground/80 hover:text-foreground hover:bg-rosey-50 px-2 py-1 rounded w-full"
+                    disabled={sending}
+                    className="text-left text-[12px] text-foreground/80 hover:text-foreground hover:bg-rosey-50 px-2 py-1 rounded w-full disabled:opacity-50"
                   >
                     {s}
                   </button>
@@ -144,8 +153,8 @@ export function Playground() {
           </div>
           <div className="rounded-lg border border-dashed border-foreground/20 bg-cream-50 p-4 text-[11px] text-foreground/60 space-y-2">
             <p>
-              <strong className="text-foreground">Escribe</strong> en Supabase real (lead, conversaciones,
-              estado, alertas si corresponde).
+              <strong className="text-foreground">Escribe</strong> en Supabase real (lead,
+              conversaciones, estado, alertas si corresponde).
             </p>
             <p>
               <strong className="text-foreground">NO escribe</strong> en ManyChat — los mensajes
@@ -162,15 +171,53 @@ export function Playground() {
   );
 }
 
+function PendingTurn({ text }: { text: string }) {
+  return (
+    <div className="space-y-2">
+      <UserBubble text={text} />
+      <TypingBubble />
+    </div>
+  );
+}
+
+function UserBubble({ text }: { text: string }) {
+  return (
+    <div className="flex justify-end">
+      <div className="bg-foreground/10 px-3 py-2 rounded-lg max-w-[70%] text-sm">{text}</div>
+    </div>
+  );
+}
+
+function TypingBubble() {
+  return (
+    <div className="flex">
+      <div className="bg-cream-50 border border-rosey-200 rounded-lg px-4 py-2.5 flex items-center gap-1">
+        <Dot delay={0} />
+        <Dot delay={180} />
+        <Dot delay={360} />
+        <span className="sr-only">Sirena está escribiendo</span>
+      </div>
+    </div>
+  );
+}
+
+function Dot({ delay }: { delay: number }) {
+  return (
+    <span
+      className="w-1.5 h-1.5 rounded-full bg-rosey-400 inline-block"
+      style={{
+        animation: "typing-dot 1.2s infinite ease-in-out",
+        animationDelay: `${delay}ms`,
+      }}
+    />
+  );
+}
+
 function TurnView({ turn }: { turn: Turn }) {
   const f = turn.result.flow;
   return (
     <div className="space-y-2">
-      <div className="flex justify-end">
-        <div className="bg-foreground/10 px-3 py-2 rounded-lg max-w-[70%] text-sm">
-          {turn.user}
-        </div>
-      </div>
+      <UserBubble text={turn.user} />
 
       {turn.result.error && (
         <div className="border border-rosey-300 bg-rosey-50 rounded px-3 py-2 text-[12px] text-rosey-500">
@@ -197,23 +244,23 @@ function TurnView({ turn }: { turn: Turn }) {
             tool · {f.toolResult.tool} · {f.toolResult.ok ? "ok" : "falló"}
           </div>
           {f.toolResult.notes.map((n, i) => (
-            <div key={i} className="text-foreground/60 mt-1">{n}</div>
+            <div key={i} className="text-foreground/60 mt-1">
+              {n}
+            </div>
           ))}
         </div>
       )}
 
-      {/* Burbujas de mensajes salientes (catálogo + URL, FAQ + imagen, etc) */}
-      {f?.outbound && f.outbound.length > 0 && (
-        <div className="space-y-1.5">
-          {f.outbound.map((m, i) => (
-            <OutboundBubble key={i} msg={m} />
-          ))}
-        </div>
-      )}
-
-      {/* Cuando no hubo tool con outbound, el agenteTexto se renderiza como fallback */}
-      {f && (!f.outbound || f.outbound.length === 0) && f.agenteTexto && (
-        <OutboundBubble msg={{ source: "agente", type: "text", text: f.agenteTexto }} demo={f.demo} />
+      {/* Burbujas reveladas una por una con typing entre cada una */}
+      {f?.outbound && f.outbound.length > 0 ? (
+        <StaggeredBubbles messages={f.outbound} demo={!!f.demo} />
+      ) : (
+        f?.agenteTexto && (
+          <StaggeredBubbles
+            messages={[{ source: "agente", type: "text", text: f.agenteTexto }]}
+            demo={!!f.demo}
+          />
+        )
       )}
 
       {f?.verificador && (
@@ -246,6 +293,38 @@ function TurnView({ turn }: { turn: Turn }) {
   );
 }
 
+// Revela las burbujas una por una, con typing entre cada una.
+// Le da naturalidad — se siente como si Sirena estuviera escribiendo.
+function StaggeredBubbles({ messages, demo }: { messages: OutboundMsg[]; demo: boolean }) {
+  const [visible, setVisible] = useState(0);
+  const [typing, setTyping] = useState(messages.length > 1);
+
+  useEffect(() => {
+    if (visible >= messages.length) {
+      setTyping(false);
+      return;
+    }
+    // Primera burbuja aparece rápido, las siguientes con typing más largo
+    const isFirst = visible === 0;
+    const typingMs = isFirst ? 400 : 900;
+    setTyping(true);
+    const t = setTimeout(() => {
+      setVisible((v) => v + 1);
+      setTyping(visible + 1 < messages.length);
+    }, typingMs);
+    return () => clearTimeout(t);
+  }, [visible, messages.length]);
+
+  return (
+    <div className="space-y-1.5">
+      {messages.slice(0, visible).map((m, i) => (
+        <OutboundBubble key={i} msg={m} demo={demo && i === 0} />
+      ))}
+      {typing && <TypingBubble />}
+    </div>
+  );
+}
+
 function OutboundBubble({ msg, demo }: { msg: OutboundMsg; demo?: boolean }) {
   const tone = msg.source === "tool" ? "border-lila-300" : "border-rosey-300";
   return (
@@ -257,9 +336,7 @@ function OutboundBubble({ msg, demo }: { msg: OutboundMsg; demo?: boolean }) {
             modo demo (sin OpenRouter)
           </div>
         )}
-        {msg.type === "text" && (
-          <div className="text-sm whitespace-pre-wrap">{msg.text}</div>
-        )}
+        {msg.type === "text" && <div className="text-sm whitespace-pre-wrap">{msg.text}</div>}
         {msg.type === "image" && (
           <div className="space-y-1">
             <div className="inline-flex items-center gap-1.5 text-[11px] text-lila-500">
