@@ -1,98 +1,349 @@
-// Server component: lee el estado de las env vars de servidor SIN exponerlas.
+"use client";
 
-import { CheckCircle2, XCircle, AlertCircle } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { useState } from "react";
+import {
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  Copy,
+  Check,
+  ExternalLink,
+  ChevronDown,
+  ChevronRight,
+  Database,
+  Shield,
+  Brain,
+  MessageSquare,
+  Mic,
+  Layers,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
-type Status = "ok" | "missing" | "warn";
+type Status = "ok" | "warn" | "missing";
 
-async function probeSupabase(): Promise<Status> {
-  try {
-    const sb = createClient();
-    const { error } = await sb.from("leads").select("*", { count: "exact", head: true });
-    if (error) return "warn";
-    return "ok";
-  } catch {
-    return "missing";
-  }
-}
+type Statuses = {
+  supabasePublic: Status;
+  supabaseService: Status;
+  openrouter: Status;
+  manychat: Status;
+  openai: Status;
+  redis: Status;
+};
 
-export async function CredencialesPanel() {
-  const supa = await probeSupabase();
-  const credenciales = [
-    {
-      label: "Supabase URL + anon key",
-      vars: ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"],
-      status: process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? supa : "missing",
-      use: "Lectura desde browser y server.",
-    },
-    {
-      label: "Supabase service role",
-      vars: ["SUPABASE_SERVICE_ROLE_KEY"],
-      status: (process.env.SUPABASE_SERVICE_ROLE_KEY ? "ok" : "missing") as Status,
-      use: "Webhook · INSERTs a alertas, eventos_negocio, conversaciones.",
-    },
-    {
-      label: "OpenRouter (Verificador + Agente)",
-      vars: ["OPENROUTER_API_KEY"],
-      status: (process.env.OPENROUTER_API_KEY ? "ok" : "warn") as Status,
-      use: "Haiku 4.5 · Opus 4.6 fast. Sin key, el flujo entra en modo demo.",
-    },
-    {
-      label: "ManyChat",
-      vars: ["MANYCHAT_API_KEY"],
-      status: (process.env.MANYCHAT_API_KEY ? "ok" : "warn") as Status,
-      use: "POST a /fb/sending/sendContent. Sin key, los mensajes solo se loguean.",
-    },
-    {
-      label: "OpenAI Whisper",
-      vars: ["OPENAI_API_KEY"],
-      status: (process.env.OPENAI_API_KEY ? "ok" : "warn") as Status,
-      use: "Transcripción de audios .ogg. Sin key, los audios pasan como URL cruda.",
-    },
-    {
-      label: "Redis",
-      vars: ["REDIS_URL"],
-      status: (process.env.REDIS_URL ? "ok" : "warn") as Status,
-      use: "Buffer de 5s entre mensajes cercanos del mismo lead.",
-    },
-  ];
+type Cred = {
+  id: keyof Statuses;
+  label: string;
+  Icon: typeof Database;
+  required: boolean;
+  vars: string[];
+  use: string;
+  fallback: string;
+  obtain: { label: string; url: string }[];
+  notes?: string;
+};
+
+const CREDS: Cred[] = [
+  {
+    id: "supabasePublic",
+    label: "Supabase (URL + anon key)",
+    Icon: Database,
+    required: true,
+    vars: ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"],
+    use: "Lectura desde browser y server. Las pantallas de KPIs, pipeline, equipo y cierres dependen de esto.",
+    fallback: "Sin esto el dashboard no funciona — todos los datos vienen de Supabase.",
+    obtain: [
+      { label: "Dashboard de Supabase → Settings → API", url: "https://supabase.com/dashboard/project/nbciljmueoihtzznmvdg/settings/api" },
+    ],
+    notes: "Estas dos ya están comiteadas en .env (no son secretos — el anon key se diseña para ser público y la seguridad la da RLS).",
+  },
+  {
+    id: "supabaseService",
+    label: "Supabase service role",
+    Icon: Shield,
+    required: true,
+    vars: ["SUPABASE_SERVICE_ROLE_KEY"],
+    use: "El webhook necesita esta key para hacer INSERTs en alertas, eventos_negocio, conversaciones y leads. Salta RLS.",
+    fallback: "Sin esto el webhook devuelve 500 al recibir un mensaje. El dashboard sigue funcionando para lectura.",
+    obtain: [
+      { label: "Dashboard de Supabase → Settings → API → service_role", url: "https://supabase.com/dashboard/project/nbciljmueoihtzznmvdg/settings/api" },
+    ],
+    notes: "⚠️ Esta key SÍ es secreta. Sólo vive en servidor — nunca aparece en el browser. Tratala como contraseña.",
+  },
+  {
+    id: "openrouter",
+    label: "OpenRouter (Verificador + Agente)",
+    Icon: Brain,
+    required: false,
+    vars: ["OPENROUTER_API_KEY"],
+    use: "Llama a Haiku 4.5 (Verificador, clasifica intención) y Opus 4.6 fast (Sirena, genera respuestas).",
+    fallback: "Sin esto el flujo entra en MODO DEMO: clasifica por keywords y devuelve respuestas hardcodeadas. La UI funciona pero las respuestas no son inteligentes.",
+    obtain: [
+      { label: "Crear cuenta y key en OpenRouter", url: "https://openrouter.ai/settings/keys" },
+    ],
+    notes: "Carga $10-20 USD de saldo. Para 600-800 mensajes/día con Haiku+Opus rondas $0.50-1.50 USD/día.",
+  },
+  {
+    id: "manychat",
+    label: "ManyChat (envío a WhatsApp)",
+    Icon: MessageSquare,
+    required: false,
+    vars: ["MANYCHAT_API_KEY"],
+    use: "POST a /fb/sending/sendContent — es lo que le habla de vuelta a la clienta en WhatsApp.",
+    fallback: "Sin esto el agente piensa la respuesta pero NO la envía. Las respuestas solo se loguean. Útil mientras pruebas.",
+    obtain: [
+      { label: "ManyChat → Settings → API → Generate token", url: "https://app.manychat.com/api" },
+    ],
+    notes: "En n8n estaba como credencial 'Salvador Manychat' (httpHeaderAuth). Es ese mismo token.",
+  },
+  {
+    id: "openai",
+    label: "OpenAI Whisper (audios)",
+    Icon: Mic,
+    required: false,
+    vars: ["OPENAI_API_KEY"],
+    use: "Transcribe los audios .ogg que llegan por WhatsApp a texto antes de mandarlos al Verificador.",
+    fallback: "Sin esto los audios se procesan como URL cruda y el Verificador no entiende qué dijeron — devolverá 'ambiguo' la mayoría de veces.",
+    obtain: [
+      { label: "OpenAI Platform → API Keys", url: "https://platform.openai.com/api-keys" },
+    ],
+    notes: "Whisper es muy barato (~$0.006 USD por minuto). Para 50 audios/día son centavos.",
+  },
+  {
+    id: "redis",
+    label: "Redis (buffer 5s)",
+    Icon: Layers,
+    required: false,
+    vars: ["REDIS_URL"],
+    use: "Agrupa mensajes seguidos del mismo cliente. Si una clienta manda 3 mensajes en 4 segundos, Sirena contesta una sola vez al combinar los 3.",
+    fallback: "Sin esto cada mensaje se procesa individualmente. Para tu volumen está bien — si después notas que Sirena contesta múltiples veces a mensajes consecutivos, lo agregamos.",
+    obtain: [
+      { label: "Upstash Redis (gratis hasta 10k commands/día)", url: "https://upstash.com" },
+      { label: "Vercel KV (integrado en tu proyecto)", url: "https://vercel.com/docs/storage/vercel-kv" },
+    ],
+    notes: "El que tienes en n8n es de esa instancia y no se puede reutilizar desde Vercel. Lo más rápido: omitirlo. Lo más completo: Upstash (5 min de setup).",
+  },
+];
+
+export function CredencialesPanel({ statuses }: { statuses: Statuses }) {
+  const okCount = Object.values(statuses).filter((s) => s === "ok").length;
+  const total = Object.values(statuses).length;
 
   return (
-    <div className="px-10 py-6 space-y-5">
+    <div className="px-10 py-6 space-y-6">
       <div>
         <div className="label-xs">Configuración · Credenciales</div>
-        <h1 className="font-serif-display text-5xl leading-none mt-1">Estado de credenciales</h1>
-        <div className="text-[13px] text-muted-foreground mt-2">
-          Server-side check. Los valores nunca se muestran — solo si están definidos y si la conexión responde.
+        <h1 className="font-serif-display text-[56px] leading-[1.05] mt-1">Credenciales</h1>
+        <div className="text-[13px] text-foreground/60 mt-2">
+          {okCount} de {total} conectadas · Los secretos se setean en Vercel, no en el código.
         </div>
       </div>
 
-      <section className="rounded-lg border border-border bg-card divide-y divide-border">
-        {credenciales.map((c) => (
-          <div key={c.label} className="grid grid-cols-[40px_1fr_220px] gap-4 px-5 py-4 items-start">
-            <StatusIcon status={c.status} />
-            <div>
-              <div className="font-medium">{c.label}</div>
-              <div className="text-[12px] text-muted-foreground mt-1">{c.use}</div>
-            </div>
-            <div className="text-[11px] font-mono text-muted-foreground space-y-0.5 text-right">
-              {c.vars.map((v) => <div key={v}>{v}</div>)}
-            </div>
-          </div>
-        ))}
-      </section>
+      <VercelGuide />
 
-      <section className="rounded-lg border border-dashed border-border bg-card p-5 text-[12px] text-muted-foreground leading-relaxed">
-        Los secretos van en <code className="text-foreground">.env.local</code> (gitignored).
-        Después de cambiarlos, hay que reiniciar el dev server (Next.js no hace hot-reload de env vars).
-        En producción Vercel, se setean desde el panel del proyecto.
+      <section className="space-y-3">
+        {CREDS.map((c) => (
+          <CredCard key={c.id} cred={c} status={statuses[c.id]} />
+        ))}
       </section>
     </div>
   );
 }
 
+function VercelGuide() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-lg border border-rosey-300 bg-rosey-50/40 overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full px-5 py-3 flex items-center gap-2 text-left hover:bg-rosey-50"
+      >
+        {open ? (
+          <ChevronDown className="h-4 w-4 text-rosey-500" />
+        ) : (
+          <ChevronRight className="h-4 w-4 text-rosey-500" />
+        )}
+        <span className="font-serif-display text-[18px]">¿Cómo agrego o cambio una credencial en Vercel?</span>
+        <span className="ml-auto label-xs">paso a paso</span>
+      </button>
+
+      {open && (
+        <div className="px-5 pb-5 pt-2 text-[13px] text-foreground/80 leading-relaxed space-y-3">
+          <Step n="1" title="Entra a vercel.com">
+            Inicia sesión con tu cuenta y abre el proyecto <code>mar-de-plata</code> (o el nombre que le hayas puesto al
+            deployar).
+          </Step>
+          <Step n="2" title="Settings → Environment Variables">
+            En el menú superior del proyecto haz click en <strong>Settings</strong> y después en{" "}
+            <strong>Environment Variables</strong> en la barra lateral izquierda.
+          </Step>
+          <Step n="3" title="Add New">
+            Click en el botón <strong>“Add New”</strong>. Te pide tres cosas:
+            <ul className="list-disc list-inside mt-1.5 ml-1">
+              <li><strong>Key</strong>: el nombre EXACTO de la variable (cópialo del botón “Copiar nombre” abajo).</li>
+              <li><strong>Value</strong>: el valor (la clave que te dio el proveedor — OpenRouter, ManyChat, etc).</li>
+              <li><strong>Environments</strong>: marca las tres (Production, Preview, Development).</li>
+            </ul>
+          </Step>
+          <Step n="4" title="Save y re-deploy">
+            Vercel guarda la variable pero <strong>no la activa</strong> hasta que rehagas el deploy.
+            Ve a <strong>Deployments</strong>, el último deploy, click en los tres puntos (⋯) y{" "}
+            <strong>“Redeploy”</strong>.
+          </Step>
+          <Step n="5" title="Para cambiar una existente">
+            Buscas la variable en la lista, click en los tres puntos (⋯) a la derecha y “Edit”. Cambia el value y
+            “Save”. Re-deploy.
+          </Step>
+          <div className="border-t border-rosey-300/40 pt-3 mt-3 text-[12px] text-foreground/60">
+            En local (cuando corres <code>npm run dev</code> en tu compu) los secretos van en{" "}
+            <code>.env.local</code> en la raíz del repo. Ese archivo está en .gitignore así que nunca se sube. La página
+            de arriba mira tu <code>.env.local</code> + lo que esté en Vercel cuando corre en producción.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Step({ n, title, children }: { n: string; title: string; children: React.ReactNode }) {
+  return (
+    <div className="flex gap-3">
+      <span className="font-serif-display text-[22px] text-rosey-400 leading-none shrink-0 w-6">{n}</span>
+      <div>
+        <div className="font-medium text-foreground">{title}</div>
+        <div className="text-foreground/70 mt-0.5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function CredCard({ cred, status }: { cred: Cred; status: Status }) {
+  const [open, setOpen] = useState(false);
+  const Icon = cred.Icon;
+
+  const statusLabel =
+    status === "ok"
+      ? "Conectada"
+      : status === "warn"
+        ? cred.required
+          ? "Falta · crítica"
+          : "Sin conectar · modo demo"
+        : "Falta";
+
+  const statusTone =
+    status === "ok"
+      ? "border-sage-300 bg-sage-50 text-sage-600"
+      : status === "warn" && cred.required
+        ? "border-rosey-300 bg-rosey-50 text-rosey-500"
+        : status === "warn"
+          ? "border-ambr-300 bg-ambr-50 text-ambr-600"
+          : "border-rosey-300 bg-rosey-50 text-rosey-500";
+
+  return (
+    <div className="rounded-lg border border-foreground/15 bg-cream-50 overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full px-5 py-4 flex items-start gap-4 text-left hover:bg-cream-100"
+      >
+        <StatusIcon status={status} />
+        <div className="rounded-md border border-foreground/15 bg-cream-100 p-2 shrink-0">
+          <Icon className="h-4 w-4" strokeWidth={1.6} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="font-serif-display text-[20px] leading-none">{cred.label}</div>
+            <span className={cn("pill", statusTone)}>{statusLabel}</span>
+            {cred.required && (
+              <span className="pill border-foreground/30 bg-cream-50 text-foreground/60">obligatoria</span>
+            )}
+          </div>
+          <p className="text-[12px] text-foreground/65 mt-1.5 leading-relaxed">{cred.use}</p>
+        </div>
+        {open ? (
+          <ChevronDown className="h-4 w-4 text-foreground/40 mt-1.5" />
+        ) : (
+          <ChevronRight className="h-4 w-4 text-foreground/40 mt-1.5" />
+        )}
+      </button>
+
+      {open && (
+        <div className="px-5 pb-5 pt-2 border-t border-foreground/10 space-y-4">
+          <div>
+            <div className="label-xs mb-1.5">Si no la tienes</div>
+            <p className="text-[12px] text-foreground/75 leading-relaxed">{cred.fallback}</p>
+          </div>
+
+          <div>
+            <div className="label-xs mb-2">Variables de entorno</div>
+            <ul className="space-y-1.5">
+              {cred.vars.map((v) => (
+                <CopyableVar key={v} name={v} />
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <div className="label-xs mb-2">Dónde obtener la key</div>
+            <ul className="space-y-1.5">
+              {cred.obtain.map((o) => (
+                <li key={o.url}>
+                  <a
+                    href={o.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-[13px] text-rosey-500 hover:text-rosey-600 underline decoration-rosey-300 underline-offset-2"
+                  >
+                    {o.label}
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {cred.notes && (
+            <div className="border border-foreground/10 bg-cream-100 rounded px-3 py-2 text-[12px] text-foreground/70 leading-relaxed">
+              {cred.notes}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CopyableVar({ name }: { name: string }) {
+  const [copied, setCopied] = useState(false);
+  function copy() {
+    navigator.clipboard.writeText(name).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
+  return (
+    <li className="flex items-center gap-2">
+      <code className="flex-1 font-mono text-[11px] bg-cream-100 border border-foreground/10 rounded px-2 py-1">
+        {name}
+      </code>
+      <button
+        onClick={copy}
+        className={cn(
+          "inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded border transition-colors shrink-0",
+          copied
+            ? "border-sage-300 text-sage-600 bg-sage-50"
+            : "border-foreground/20 hover:bg-cream-100",
+        )}
+      >
+        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+        {copied ? "Copiado" : "Copiar nombre"}
+      </button>
+    </li>
+  );
+}
+
 function StatusIcon({ status }: { status: Status }) {
-  if (status === "ok") return <CheckCircle2 className="h-5 w-5 text-grupo" />;
-  if (status === "warn") return <AlertCircle className="h-5 w-5 text-recurrente" />;
-  return <XCircle className="h-5 w-5 text-destructive" />;
+  if (status === "ok")
+    return <CheckCircle2 className="h-5 w-5 text-sage-500 shrink-0 mt-1" />;
+  if (status === "warn")
+    return <AlertCircle className="h-5 w-5 text-ambr-400 shrink-0 mt-1" />;
+  return <XCircle className="h-5 w-5 text-rosey-400 shrink-0 mt-1" />;
 }

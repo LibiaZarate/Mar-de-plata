@@ -1,31 +1,45 @@
 import Link from "next/link";
 import {
   Webhook,
-  Radio,
   Settings2,
   FileText,
   KeyRound,
-  PlayCircle,
+  ExternalLink,
   type LucideIcon,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 type Card = {
   href: string;
   title: string;
   description: string;
   Icon: LucideIcon;
-  phase: number;
-  ready: boolean;
 };
 
 const cards: Card[] = [
-  { href: "/configuracion/webhook",     title: "Inspector del webhook", description: "Últimos POSTs recibidos en /api/webhook/manychat con payload limpio y body raw.", Icon: Webhook, phase: 2, ready: true },
-  { href: "/configuracion/lives",       title: "Lives",                 description: "CRUD de eventos_live · calendario, código de descuento, red social.", Icon: Radio, phase: 11, ready: true },
-  { href: "/configuracion/sistema",     title: "Sistema",               description: "CRUD de config_sistema · URLs de catálogos, link de grupo, montos.", Icon: Settings2, phase: 11, ready: true },
-  { href: "/configuracion/prompts",     title: "Prompts",               description: "Lectura del system prompt del Verificador y del Agente Madre.", Icon: FileText, phase: 11, ready: true },
-  { href: "/configuracion/credenciales", title: "Credenciales",         description: "Estado de OpenRouter, ManyChat, Whisper, Redis. Sin exponer secrets.", Icon: KeyRound, phase: 11, ready: true },
-  { href: "/configuracion/playground",  title: "Playground",            description: "Chat de prueba contra Sirena con panel de debug (brief + tools).", Icon: PlayCircle, phase: 12, ready: true },
+  {
+    href: "/configuracion/webhook",
+    title: "Inspector del webhook",
+    description: "Últimos POSTs recibidos en /api/webhook/manychat con payload limpio y body raw.",
+    Icon: Webhook,
+  },
+  {
+    href: "/configuracion/sistema",
+    title: "Sistema",
+    description: "CRUD de config_sistema · URLs de catálogos, link de grupo, montos.",
+    Icon: Settings2,
+  },
+  {
+    href: "/configuracion/prompts",
+    title: "Prompts",
+    description: "Lectura del system prompt del Verificador y del Agente Madre.",
+    Icon: FileText,
+  },
+  {
+    href: "/configuracion/credenciales",
+    title: "Credenciales",
+    description: "Conexiones a OpenRouter, ManyChat, Supabase y Whisper. Cómo configurarlas en Vercel.",
+    Icon: KeyRound,
+  },
 ];
 
 export default function ConfiguracionPage() {
@@ -35,22 +49,26 @@ export default function ConfiguracionPage() {
         <div className="label-xs">Inicio · Configuración</div>
         <h1 className="font-serif-display text-[56px] leading-[1.05] mt-1">Configuración</h1>
         <div className="text-[13px] text-foreground/60 mt-2">
-          Webhook · Lives · Sistema · Prompts · Credenciales · Playground del Agente
+          Webhook · Sistema · Prompts · Credenciales
         </div>
       </div>
 
+      <div className="border border-foreground/15 bg-cream-50 rounded-md px-5 py-3 text-[13px] text-foreground/70 flex items-start gap-3">
+        <span className="font-italic-serif text-rosey-500 mt-0.5">tip →</span>
+        <p>
+          <span className="font-medium text-foreground">Lives</span> y{" "}
+          <span className="font-medium text-foreground">Playground</span> ahora están en la barra
+          lateral porque son las cosas que más vas a tocar. Aquí abajo quedan las cosas técnicas que
+          se ven menos seguido.
+        </p>
+      </div>
+
       <div className="grid grid-cols-2 gap-4">
-        {cards.map(({ href, title, description, Icon, phase, ready }) => (
+        {cards.map(({ href, title, description, Icon }) => (
           <Link
             key={href}
-            href={ready ? href : "#"}
-            aria-disabled={!ready}
-            className={cn(
-              "rounded-lg border p-5 transition-colors block",
-              ready
-                ? "border-foreground/15 bg-cream-50 hover:border-rosey-300 hover:bg-rosey-50/30"
-                : "border-dashed border-foreground/20 bg-cream-50 opacity-60 cursor-not-allowed pointer-events-none",
-            )}
+            href={href}
+            className="rounded-lg border border-foreground/15 bg-cream-50 p-5 transition-colors block hover:border-rosey-300 hover:bg-rosey-50/30 group"
           >
             <div className="flex items-start gap-3">
               <div className="rounded-md border border-foreground/15 bg-cream-100 p-2">
@@ -59,9 +77,7 @@ export default function ConfiguracionPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <div className="font-serif-display text-[22px] leading-none">{title}</div>
-                  <span className={cn("pill", ready ? "pill-rose" : "pill-stone")}>
-                    {ready ? "Activo" : `Fase ${phase}`}
-                  </span>
+                  <ExternalLink className="h-3.5 w-3.5 text-foreground/40 group-hover:text-rosey-500 transition-colors" />
                 </div>
                 <p className="text-[12px] text-foreground/65 mt-2 leading-relaxed">{description}</p>
               </div>

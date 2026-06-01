@@ -8,6 +8,8 @@ const items = [
   { href: "/", label: "Inicio" },
   { href: "/pipeline", label: "Pipeline" },
   { href: "/equipo", label: "Equipo" },
+  { href: "/configuracion/lives", label: "Lives" },
+  { href: "/configuracion/playground", label: "Playground" },
   { href: "/configuracion", label: "Configuración" },
 ];
 
@@ -29,7 +31,7 @@ export function Sidebar() {
 
       <nav className="flex flex-col gap-1">
         {items.map(({ href, label }) => {
-          const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+          const active = isActive(pathname, href);
           return (
             <Link
               key={href}
@@ -67,4 +69,18 @@ export function Sidebar() {
       </div>
     </aside>
   );
+}
+
+function isActive(pathname: string, href: string): boolean {
+  if (href === "/") return pathname === "/";
+  // Lives y Playground tienen rutas /configuracion/lives y /configuracion/playground
+  // Configuración es /configuracion (no debe matchear sub-rutas que tengan su propia entrada)
+  if (href === "/configuracion") {
+    return (
+      pathname.startsWith("/configuracion") &&
+      pathname !== "/configuracion/lives" &&
+      pathname !== "/configuracion/playground"
+    );
+  }
+  return pathname === href || pathname.startsWith(href + "/");
 }
