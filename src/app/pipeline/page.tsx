@@ -1,12 +1,7 @@
-import { Soon } from "@/components/layout/soon";
+import { PipelineBoard } from "@/components/pipeline/board";
+
+export const dynamic = "force-dynamic";
 
 export default function PipelinePage() {
-  return (
-    <Soon
-      crumbs="Inicio · Pipeline"
-      title="Pipeline activo"
-      sub="Kanban de 5 columnas R1-R5 sobre leads en vivo"
-      phase="Fase 9 del roadmap"
-    />
-  );
+  return <PipelineBoard />;
 }

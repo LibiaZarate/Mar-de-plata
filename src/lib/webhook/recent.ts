@@ -1,9 +1,18 @@
-// Ring buffer in-memory de los últimos webhooks recibidos.
-// Sobrevive hot-reloads de Next.js usando globalThis.
-// En producción cada cold start lo resetea — está bien, es para depurar.
-
 import type { CleanedPayload } from "./clean";
 import type { HandoffGuardrailPlan } from "./handoff-guardrail";
+import type { VerificadorOutput } from "@/lib/agent/verificador";
+import type { ToolResult } from "@/lib/agent/tools";
+
+export type WebhookFlowSummary = {
+  demo: boolean;
+  leadCreated: boolean;
+  verificador: VerificadorOutput;
+  toolResult: ToolResult | null;
+  agenteTexto: string;
+  fragmentos: string[];
+  deliveryNotes: string[];
+  durationMs: number;
+};
 
 export type WebhookLogEntry = {
   id: string;
@@ -16,6 +25,8 @@ export type WebhookLogEntry = {
   rawBody: Record<string, unknown>;
   headers: Record<string, string>;
   guardrail: HandoffGuardrailPlan | null;
+  flow: WebhookFlowSummary | null;
+  error: string | null;
 };
 
 const MAX_ENTRIES = 50;

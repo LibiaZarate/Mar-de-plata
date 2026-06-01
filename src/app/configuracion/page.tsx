@@ -34,7 +34,7 @@ const cards: Card[] = [
     description: "CRUD de eventos_live · calendario, código de descuento, red social.",
     Icon: Radio,
     phase: 11,
-    ready: false,
+    ready: true,
   },
   {
     href: "/configuracion/sistema",
@@ -42,15 +42,15 @@ const cards: Card[] = [
     description: "CRUD de config_sistema · URLs de catálogos, link de grupo, montos.",
     Icon: Settings2,
     phase: 11,
-    ready: false,
+    ready: true,
   },
   {
     href: "/configuracion/prompts",
     title: "Prompts",
-    description: "Editor del system prompt del Verificador y del Agente Madre.",
+    description: "Lectura del system prompt del Verificador y del Agente Madre.",
     Icon: FileText,
     phase: 11,
-    ready: false,
+    ready: true,
   },
   {
     href: "/configuracion/credenciales",
@@ -58,7 +58,7 @@ const cards: Card[] = [
     description: "Estado de OpenRouter, ManyChat, Whisper, Redis. Sin exponer secrets.",
     Icon: KeyRound,
     phase: 11,
-    ready: false,
+    ready: true,
   },
   {
     href: "/configuracion/playground",
@@ -66,7 +66,7 @@ const cards: Card[] = [
     description: "Chat de prueba contra Sirena con panel de debug (brief + tools).",
     Icon: PlayCircle,
     phase: 12,
-    ready: false,
+    ready: true,
   },
 ];
 

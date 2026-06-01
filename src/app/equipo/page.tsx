@@ -1,12 +1,7 @@
-import { Soon } from "@/components/layout/soon";
+import { EquipoView } from "@/components/equipo/equipo";
+
+export const dynamic = "force-dynamic";
 
 export default function EquipoPage() {
-  return (
-    <Soon
-      crumbs="Inicio · Equipo"
-      title="Tu equipo"
-      sub="Tarjetas de Eli, Nat y persona nueva + widget Cierres del día"
-      phase="Fase 10 del roadmap"
-    />
-  );
+  return <EquipoView />;
 }

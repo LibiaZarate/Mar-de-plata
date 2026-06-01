@@ -1,21 +1,10 @@
-// Webhook receptor de ManyChat.
-//
-// Fase 2 del roadmap: solo recibe, limpia, loguea y devuelve 200.
-// Las siguientes capas (guardrails, lookup, Verificador, Agente, tools)
-// se montan en fases posteriores.
-//
-// Acepta también modo testing de Kaizen vía headers x-kaizen-session-id
-// y x-kaizen-callback (ver CLAUDE.md §10 paso 1).
+// Webhook receptor de ManyChat — orquestador completo del flujo madre.
+// Fases 2 + 3 + 4 + 5 + 6 + 7 conectadas (CLAUDE.md §10).
 
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { cleanManychatBody } from "@/lib/webhook/clean";
-import { checkGuardrails } from "@/lib/webhook/guardrails";
-import {
-  executeHandoffGuardrail,
-  planHandoffGuardrail,
-  type HandoffGuardrailPlan,
-} from "@/lib/webhook/handoff-guardrail";
+import { runFlowMadre } from "@/lib/webhook/flow";
 import {
   listWebhookLog,
   pushWebhookLog,
@@ -24,6 +13,7 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   const start = Date.now();
@@ -44,19 +34,17 @@ export async function POST(req: NextRequest) {
 
   const cleaned = cleanManychatBody(rawBody);
 
-  // Guardrails de capa 1 — corre ANTES que cualquier otra cosa.
-  // Si hay match, planeamos el handoff_directo_guardrail y salimos del
-  // pipeline normal (no Verificador, no Agente).
-  const match = checkGuardrails(cleaned.userText);
-  let guardrailPlan: HandoffGuardrailPlan | null = null;
-  if (match) {
-    guardrailPlan = planHandoffGuardrail(cleaned, match);
-    await executeHandoffGuardrail(guardrailPlan);
+  let flow: Awaited<ReturnType<typeof runFlowMadre>> | null = null;
+  let flowError: string | null = null;
+  try {
+    flow = await runFlowMadre({ cleaned, kaizenSessionId, source });
+  } catch (e) {
+    flowError = (e as Error).message;
+    console.error("[webhook/manychat] flow error:", flowError);
   }
 
   const headers: Record<string, string> = {};
   req.headers.forEach((value, key) => {
-    // Evitamos meter cabeceras hop-by-hop y cookies sensibles en el log.
     if (
       key === "cookie" ||
       key === "authorization" ||
@@ -78,44 +66,64 @@ export async function POST(req: NextRequest) {
     cleaned,
     rawBody,
     headers,
-    guardrail: guardrailPlan,
+    guardrail: flow?.earlyExit?.plan ?? null,
+    flow: flow
+      ? {
+          demo: flow.demo,
+          leadCreated: flow.leadCreated,
+          verificador: flow.verificador,
+          toolResult: flow.toolResult,
+          agenteTexto: flow.agenteTexto,
+          fragmentos: flow.fragmentos,
+          deliveryNotes: flow.deliveryNotes,
+          durationMs: flow.durationMs,
+        }
+      : null,
+    error: flowError,
   };
 
   pushWebhookLog(entry);
 
-  // Útil para `vercel logs` o terminal local
   console.info(
     `[webhook/manychat] ${source} · ${cleaned.sessionId} · ${cleaned.tipoMensajeOriginal}` +
-      (guardrailPlan
-        ? ` · GUARDRAIL ${guardrailPlan.match.category}:${guardrailPlan.match.keyword}`
-        : "") +
+      (flow?.earlyExit
+        ? ` · GUARDRAIL ${flow.earlyExit.plan.match.category}:${flow.earlyExit.plan.match.keyword}`
+        : flow
+          ? ` · tool=${flow.verificador.accion_recomendada?.tool_principal ?? "-"}`
+          : "") +
       ` · "${cleaned.userText.slice(0, 80)}"`,
   );
 
   return NextResponse.json({
-    ok: true,
-    phase: 3,
+    ok: !flowError,
+    phase: 13,
     received_at: entry.receivedAt,
     cleaned,
     source,
-    kaizen: {
-      session_id: kaizenSessionId,
-      callback: kaizenCallback,
-    },
-    guardrail: guardrailPlan
+    kaizen: { session_id: kaizenSessionId, callback: kaizenCallback },
+    guardrail: flow?.earlyExit
       ? {
           hit: true,
-          category: guardrailPlan.match.category,
-          keyword: guardrailPlan.match.keyword,
-          motivo: guardrailPlan.match.motivo,
+          category: flow.earlyExit.plan.match.category,
+          keyword: flow.earlyExit.plan.match.keyword,
+          motivo: flow.earlyExit.plan.match.motivo,
           action: "handoff_directo_guardrail",
-          steps_pending: guardrailPlan.steps.length,
         }
       : { hit: false },
+    flow: flow
+      ? {
+          demo: flow.demo,
+          lead_created: flow.leadCreated,
+          tool: flow.toolResult?.tool ?? null,
+          tool_ok: flow.toolResult?.ok ?? null,
+          fragmentos: flow.fragmentos.length,
+          duration_ms: flow.durationMs,
+        }
+      : null,
+    error: flowError,
   });
 }
 
-// Inspector: GET devuelve el ring buffer en memoria.
 export async function GET() {
   return NextResponse.json({
     ok: true,
