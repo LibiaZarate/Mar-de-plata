@@ -139,6 +139,9 @@ function LeadCard({ lead }: { lead: Lead }) {
   const idx = STAGES.indexOf(lead.estado);
   const next = idx >= 0 && idx < STAGES.length - 1 ? STAGES[idx + 1] : null;
   const border = CANAL_BORDER[lead.canal_origen ?? ""] ?? "border-t-foreground/30";
+  const tail = lead.numero_whatsapp.slice(-4);
+  const displayName = lead.nombre?.trim() || `Sin nombre · ${tail}`;
+  const isTest = (lead.etiquetas ?? []).includes("playground");
   return (
     <a
       href={`https://wa.me/${lead.numero_whatsapp.replace(/\D/g, "")}`}
@@ -151,13 +154,23 @@ function LeadCard({ lead }: { lead: Lead }) {
         border,
       )}
     >
-      <div className="flex items-center justify-between mb-1">
+      <div className="flex items-center justify-between mb-1 gap-1.5">
         <span className="label-xs">{lead.canal_origen ?? "—"}</span>
-        <span className="text-[10px] text-foreground/55 font-mono truncate max-w-[110px]">
+        {isTest && (
+          <span className="text-[9px] tracking-wider uppercase px-1 py-0.5 rounded border border-lila-300 text-lila-500 bg-lila-50">
+            test
+          </span>
+        )}
+        <span className="text-[10px] text-foreground/55 font-mono truncate ml-auto max-w-[110px]">
           {lead.numero_whatsapp}
         </span>
       </div>
-      <div className="text-[13px] font-medium truncate">{lead.nombre || "Sin nombre"}</div>
+      <div className={cn(
+        "text-[13px] font-medium truncate",
+        !lead.nombre?.trim() && "text-foreground/60 italic",
+      )}>
+        {displayName}
+      </div>
       <div className="text-[12px] text-foreground/55 mt-0.5">{lead.ciudad ?? "—"}</div>
       <div className="flex flex-wrap gap-1.5 mt-2">
         {lead.tipo === "mayoreo" && <span className="pill-rose">Mayoreo</span>}

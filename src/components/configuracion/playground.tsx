@@ -1,8 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Sparkles, Send, ShieldAlert, Wrench, Image as ImageIcon } from "lucide-react";
+import {
+  Sparkles,
+  Send,
+  ShieldAlert,
+  Wrench,
+  Image as ImageIcon,
+  RotateCcw,
+  ArrowRight,
+} from "lucide-react";
+import Link from "next/link";
+import { mutate } from "swr";
 import { cn } from "@/lib/utils";
+import {
+  useConversacionHistory,
+  useRecentConversations,
+  type ConversacionMsg,
+} from "@/lib/queries";
 
 type OutboundMsg = {
   source: "tool" | "agente";
@@ -43,12 +58,40 @@ const SUGERENCIAS = [
   "esto es un fraude, voy a Profeco",
 ];
 
+const LS_NUMERO = "playground:numero";
+const DEFAULT_NUMERO = "5215550000000";
+
+function randomNumero(): string {
+  // Genera un número MX random para empezar una sesión limpia
+  const tail = Math.floor(1000000 + Math.random() * 9000000);
+  return `52155${tail}`;
+}
+
 export function Playground() {
   const [text, setText] = useState("");
-  const [numero, setNumero] = useState("5215550000000");
+  const [numero, setNumero] = useState<string>(DEFAULT_NUMERO);
+  const [hydrated, setHydrated] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [pending, setPending] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+
+  // Restaurar último número usado
+  useEffect(() => {
+    const saved =
+      typeof window !== "undefined" ? localStorage.getItem(LS_NUMERO) : null;
+    if (saved) setNumero(saved);
+    setHydrated(true);
+  }, []);
+
+  // Persistir número + limpiar turnos in-memory al cambiar de número
+  useEffect(() => {
+    if (!hydrated) return;
+    localStorage.setItem(LS_NUMERO, numero);
+    setTurns([]);
+  }, [numero, hydrated]);
+
+  const history = useConversacionHistory(numero);
+  const recents = useRecentConversations();
 
   async function send() {
     const t = text.trim();
@@ -64,6 +107,14 @@ export function Playground() {
       });
       const data = await r.json();
       setTurns((prev) => [...prev, { user: t, result: data }]);
+      // refresca historial + recents + métricas globales para que se vea
+      // el lead en el pipeline y los KPIs
+      history.mutate();
+      recents.mutate();
+      mutate("kpi:leads_hoy");
+      mutate("blocC:embudo");
+      mutate("blocB:canales");
+      mutate((k) => Array.isArray(k) && k[0] === "pipeline");
     } catch (e) {
       setTurns((prev) => [
         ...prev,
@@ -75,6 +126,10 @@ export function Playground() {
     }
   }
 
+  function nuevaSesion() {
+    setNumero(randomNumero());
+  }
+
   return (
     <div className="px-10 py-6 space-y-5">
       <div className="flex items-end justify-between gap-4">
@@ -84,23 +139,49 @@ export function Playground() {
             Playground del agente
           </h1>
           <div className="text-[13px] text-foreground/60 mt-2">
-            Simulador completo. Sirena clasifica, ejecuta tools, escribe en Supabase real, pero{" "}
-            <strong className="text-foreground">nunca</strong> envía mensajes a WhatsApp. Los
-            mensajes que se mandarían aparecen como burbujas.
+            Simulador completo. Sirena <strong>escribe en Supabase real</strong> (lead,
+            conversaciones, alertas) y se ve en el Pipeline y en las métricas, pero{" "}
+            <strong>nunca</strong> envía mensajes a WhatsApp.
           </div>
         </div>
         <span className="pill border-sage-300 bg-sage-50 text-sage-600">● Simulador</span>
       </div>
 
-      <div className="grid grid-cols-[1fr_280px] gap-4">
-        <section className="rounded-lg border border-foreground/15 bg-cream-50 p-5 min-h-[400px] flex flex-col">
-          <div className="flex-1 space-y-4 overflow-y-auto">
-            {turns.length === 0 && !pending && (
-              <div className="text-center text-foreground/55 text-[13px] py-12">
-                Tu primera prueba va a aparecer aquí.
+      <div className="grid grid-cols-[1fr_300px] gap-4">
+        <section className="rounded-lg border border-foreground/15 bg-cream-50 p-5 min-h-[500px] flex flex-col">
+          <div className="flex-1 space-y-4 overflow-y-auto max-h-[640px]">
+            {history.isLoading && (
+              <div className="text-center text-foreground/45 text-[12px] py-3">
+                Cargando historial…
               </div>
             )}
-            {turns.map((t, i) => <TurnView key={i} turn={t} />)}
+            {history.data && history.data.length > 0 && (
+              <>
+                <div className="flex items-center gap-2 text-[10px] tracking-wider uppercase text-foreground/50">
+                  <span className="h-px bg-foreground/15 flex-1" />
+                  <span>Conversación anterior · {history.data.length} mensaje{history.data.length === 1 ? "" : "s"}</span>
+                  <span className="h-px bg-foreground/15 flex-1" />
+                </div>
+                {history.data.map((m) => (
+                  <HistoryBubble key={m.id} msg={m} />
+                ))}
+                {turns.length > 0 && (
+                  <div className="flex items-center gap-2 text-[10px] tracking-wider uppercase text-rosey-400 my-1">
+                    <span className="h-px bg-rosey-200 flex-1" />
+                    <span>Nuevos turnos</span>
+                    <span className="h-px bg-rosey-200 flex-1" />
+                  </div>
+                )}
+              </>
+            )}
+            {history.data?.length === 0 && turns.length === 0 && !pending && (
+              <div className="text-center text-foreground/55 text-[13px] py-8">
+                Sin conversación previa con este número. Escribe abajo para empezar.
+              </div>
+            )}
+            {turns.map((t, i) => (
+              <TurnView key={i} turn={t} />
+            ))}
             {pending && <PendingTurn text={pending} />}
           </div>
 
@@ -112,6 +193,15 @@ export function Playground() {
                 onChange={(e) => setNumero(e.target.value)}
                 className="font-mono text-[11px] px-2 py-1 rounded border border-foreground/20 bg-cream-50 flex-1"
               />
+              <button
+                onClick={nuevaSesion}
+                disabled={sending}
+                className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-foreground/20 hover:bg-cream-100 text-foreground/70"
+                title="Generar un número random para empezar una sesión limpia"
+              >
+                <RotateCcw className="h-3 w-3" />
+                Nueva sesión
+              </button>
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -135,6 +225,12 @@ export function Playground() {
         </section>
 
         <aside className="space-y-3">
+          <RecentsPanel
+            recents={recents.data ?? []}
+            currentNumero={numero}
+            onPick={(n) => setNumero(n)}
+          />
+
           <div className="rounded-lg border border-foreground/15 bg-cream-50 p-4">
             <div className="label-xs mb-2">Sugerencias para probar</div>
             <ul className="space-y-1.5">
@@ -151,25 +247,107 @@ export function Playground() {
               ))}
             </ul>
           </div>
+
           <div className="rounded-lg border border-dashed border-foreground/20 bg-cream-50 p-4 text-[11px] text-foreground/60 space-y-2">
             <p>
-              <strong className="text-foreground">Escribe</strong> en Supabase real (lead,
-              conversaciones, estado, alertas si corresponde).
+              <strong className="text-foreground">Escribe</strong> en Supabase (lead,
+              conversaciones, estado, alertas) y se ve en{" "}
+              <Link href="/pipeline" className="text-rosey-500 underline">
+                Pipeline
+              </Link>{" "}
+              y en las métricas.
             </p>
             <p>
-              <strong className="text-foreground">NO escribe</strong> en ManyChat — los mensajes
-              salientes solo se ven aquí.
+              <strong className="text-foreground">NO escribe</strong> en ManyChat.
             </p>
-            <p>
-              Si usas un número que ya existe, se incrementan sus turnos. Para una sesión limpia,
-              cambia el número.
-            </p>
+            <p>Los leads de prueba quedan marcados con etiqueta <code>playground</code>.</p>
           </div>
         </aside>
       </div>
     </div>
   );
 }
+
+// ─────────────────────────────────────────────
+// Panel lateral de conversaciones recientes
+// ─────────────────────────────────────────────
+
+function RecentsPanel({
+  recents,
+  currentNumero,
+  onPick,
+}: {
+  recents: ReturnType<typeof useRecentConversations>["data"] extends infer T
+    ? Exclude<T, undefined>
+    : never;
+  currentNumero: string;
+  onPick: (numero: string) => void;
+}) {
+  if (!recents || recents.length === 0) {
+    return (
+      <div className="rounded-lg border border-foreground/15 bg-cream-50 p-4">
+        <div className="label-xs mb-2">Conversaciones recientes</div>
+        <p className="text-[11px] text-foreground/55 italic">
+          Aún no hay conversaciones registradas.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-lg border border-foreground/15 bg-cream-50 p-4">
+      <div className="flex items-center justify-between mb-2">
+        <span className="label-xs">Conversaciones recientes</span>
+        <span className="text-[10px] text-foreground/45">{recents.length}</span>
+      </div>
+      <ul className="space-y-1.5">
+        {recents.map((r) => {
+          const isCurrent = r.numero === currentNumero;
+          const tail = r.numero.slice(-4);
+          const label = r.nombre || `Sin nombre · ${tail}`;
+          return (
+            <li key={r.numero}>
+              <button
+                onClick={() => onPick(r.numero)}
+                className={cn(
+                  "w-full text-left px-2 py-1.5 rounded border transition-colors",
+                  isCurrent
+                    ? "border-rosey-300 bg-rosey-50"
+                    : "border-transparent hover:bg-rosey-50/40 hover:border-foreground/10",
+                )}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[12px] font-medium truncate flex-1">{label}</span>
+                  {r.etiquetas.includes("playground") && (
+                    <span className="text-[9px] tracking-wider uppercase px-1 py-0.5 rounded border border-lila-300 text-lila-500 bg-lila-50">
+                      test
+                    </span>
+                  )}
+                </div>
+                <div className="text-[10px] text-foreground/50 truncate font-mono">
+                  {r.numero}
+                </div>
+                <div className="text-[11px] text-foreground/60 mt-0.5 truncate">
+                  {r.lastDir === "entrante" ? "→ " : "← "}
+                  {r.lastText || <em>(sin texto)</em>}
+                </div>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <Link
+        href="/pipeline"
+        className="mt-3 inline-flex items-center gap-1 text-[11px] text-rosey-500 hover:text-rosey-600"
+      >
+        Ver todos en Pipeline <ArrowRight className="h-3 w-3" />
+      </Link>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Burbujas
+// ─────────────────────────────────────────────
 
 function PendingTurn({ text }: { text: string }) {
   return (
@@ -183,7 +361,59 @@ function PendingTurn({ text }: { text: string }) {
 function UserBubble({ text }: { text: string }) {
   return (
     <div className="flex justify-end">
-      <div className="bg-foreground/10 px-3 py-2 rounded-lg max-w-[70%] text-sm">{text}</div>
+      <div className="bg-foreground/10 px-3 py-2 rounded-lg max-w-[70%] text-sm whitespace-pre-wrap">
+        {text}
+      </div>
+    </div>
+  );
+}
+
+function HistoryBubble({ msg }: { msg: ConversacionMsg }) {
+  const isUser = msg.direccion === "entrante";
+  const time = new Date(msg.timestamp).toLocaleTimeString("es-MX", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  if (isUser) {
+    return (
+      <div className="flex flex-col items-end">
+        <div className="bg-foreground/10 px-3 py-2 rounded-lg max-w-[70%] text-sm whitespace-pre-wrap">
+          {msg.texto || <em className="text-foreground/45">(sin texto)</em>}
+        </div>
+        <span className="text-[9px] text-foreground/40 mt-0.5 mr-1">{time}</span>
+      </div>
+    );
+  }
+  // saliente (Sirena)
+  return (
+    <div className="flex flex-col items-start">
+      <div className="max-w-[70%] rounded-lg border border-rosey-200 bg-cream-50 px-3 py-2">
+        {msg.tipo_mensaje === "imagen" && msg.media_url && (
+          <div className="space-y-1 mb-1">
+            <div className="inline-flex items-center gap-1.5 text-[11px] text-lila-500">
+              <ImageIcon className="h-3 w-3" />
+              imagen
+            </div>
+            <a
+              href={msg.media_url}
+              target="_blank"
+              rel="noreferrer"
+              className="block text-[11px] font-mono text-lila-500 underline break-all"
+            >
+              {msg.media_url}
+            </a>
+          </div>
+        )}
+        <div className="text-sm whitespace-pre-wrap">
+          {msg.texto || <em className="text-foreground/45">(sin texto)</em>}
+        </div>
+        {msg.tool_ejecutada && (
+          <div className="text-[10px] text-foreground/40 mt-1">
+            tool: {msg.tool_ejecutada}
+          </div>
+        )}
+      </div>
+      <span className="text-[9px] text-foreground/40 mt-0.5 ml-1">{time}</span>
     </div>
   );
 }
@@ -251,7 +481,6 @@ function TurnView({ turn }: { turn: Turn }) {
         </div>
       )}
 
-      {/* Burbujas reveladas una por una con typing entre cada una */}
       {f?.outbound && f.outbound.length > 0 ? (
         <StaggeredBubbles messages={f.outbound} demo={!!f.demo} />
       ) : (
@@ -293,8 +522,6 @@ function TurnView({ turn }: { turn: Turn }) {
   );
 }
 
-// Revela las burbujas una por una, con typing entre cada una.
-// Le da naturalidad — se siente como si Sirena estuviera escribiendo.
 function StaggeredBubbles({ messages, demo }: { messages: OutboundMsg[]; demo: boolean }) {
   const [visible, setVisible] = useState(0);
   const [typing, setTyping] = useState(messages.length > 1);
@@ -304,7 +531,6 @@ function StaggeredBubbles({ messages, demo }: { messages: OutboundMsg[]; demo: b
       setTyping(false);
       return;
     }
-    // Primera burbuja aparece rápido, las siguientes con typing más largo
     const isFirst = visible === 0;
     const typingMs = isFirst ? 400 : 900;
     setTyping(true);

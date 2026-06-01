@@ -41,6 +41,7 @@ function normalizarCanal(raw: string | null | undefined): string | null {
 
 export async function findOrCreateLead(
   cleaned: CleanedPayload,
+  options?: { etiquetas?: string[] },
 ): Promise<LeadLookupResult> {
   const supabase = createAdminClient();
   const numero = cleaned.whatsappPhone ?? cleaned.sessionId;
@@ -55,10 +56,26 @@ export async function findOrCreateLead(
     throw new Error(`leads SELECT falló: ${findErr.message}`);
   }
   if (existing) {
+    // Si vino con etiquetas extra (ej. playground), garantizamos que estén
+    // en el array de etiquetas existente sin duplicar.
+    const extras = options?.etiquetas ?? [];
+    if (extras.length > 0) {
+      const current = (existing.etiquetas as string[] | null) ?? [];
+      const merged = Array.from(new Set([...current, ...extras]));
+      if (merged.length !== current.length) {
+        await supabase
+          .from("leads")
+          .update({ etiquetas: merged })
+          .eq("numero_whatsapp", numero);
+        (existing as Lead & { etiquetas: string[] }).etiquetas = merged;
+      }
+    }
     return { lead: existing as Lead, created: false };
   }
 
-  const baseInsert = {
+  const etiquetas = options?.etiquetas ?? [];
+
+  const baseInsert: Record<string, unknown> = {
     numero_whatsapp: numero,
     estado: "lead_nueva",
     canal_origen: normalizarCanal(cleaned.canalOrigen),
@@ -69,6 +86,7 @@ export async function findOrCreateLead(
     monto_acumulado: 0,
     reclamos_historicos: 0,
   };
+  if (etiquetas.length > 0) baseInsert.etiquetas = etiquetas;
 
   const { data: inserted, error: insErr } = await supabase
     .from("leads")
@@ -81,20 +99,20 @@ export async function findOrCreateLead(
   }
 
   // Si falló por un constraint, reintentamos con valores mínimos.
-  // (Por ejemplo si canal_origen tiene una whitelist diferente a la
-  // que conocemos.)
   if (insErr.code === "23514" || /check constraint/i.test(insErr.message)) {
+    const minInsert: Record<string, unknown> = {
+      numero_whatsapp: numero,
+      estado: "lead_nueva",
+      primer_contacto: new Date().toISOString(),
+      ticket_promedio: 0,
+      compras_totales: 0,
+      monto_acumulado: 0,
+      reclamos_historicos: 0,
+    };
+    if (etiquetas.length > 0) minInsert.etiquetas = etiquetas;
     const { data: retry, error: retryErr } = await supabase
       .from("leads")
-      .insert({
-        numero_whatsapp: numero,
-        estado: "lead_nueva",
-        primer_contacto: new Date().toISOString(),
-        ticket_promedio: 0,
-        compras_totales: 0,
-        monto_acumulado: 0,
-        reclamos_historicos: 0,
-      })
+      .insert(minInsert)
       .select("*")
       .single();
     if (retryErr) {

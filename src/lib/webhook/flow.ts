@@ -62,6 +62,8 @@ export async function runFlowMadre(input: {
   source: "manychat" | "kaizen";
   /** Forzar modo, si no se especifica usa defaultMode() (env var) */
   mode?: FlowMode;
+  /** Etiquetas extras a agregar al lead (ej. "playground" desde el simulador) */
+  leadEtiquetas?: string[];
 }): Promise<FlowResult> {
   const mode: FlowMode = input.mode ?? defaultMode();
   const start = Date.now();
@@ -69,7 +71,9 @@ export async function runFlowMadre(input: {
   const numero = input.cleaned.whatsappPhone ?? input.cleaned.sessionId;
 
   // ── Paso 4: lookup + INSERT lead ─────────────────────────
-  const { lead, created } = await findOrCreateLead(input.cleaned);
+  const { lead, created } = await findOrCreateLead(input.cleaned, {
+    etiquetas: input.leadEtiquetas,
+  });
 
   // ── Paso 6: guardrails ──────────────────────────────────
   const match = checkGuardrails(input.cleaned.userText);

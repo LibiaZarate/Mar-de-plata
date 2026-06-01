@@ -3,7 +3,8 @@
 //
 // SIEMPRE fuerza mode="simulator" aunque MODO_PRODUCCION esté
 // activado — el Playground nunca debe mandar mensajes reales a
-// WhatsApp.
+// WhatsApp. Marca los leads con etiqueta "playground" para
+// distinguirlos en el Pipeline.
 
 import { NextRequest, NextResponse } from "next/server";
 import { cleanManychatBody } from "@/lib/webhook/clean";
@@ -27,6 +28,7 @@ export async function POST(req: NextRequest) {
       cleaned,
       source: "manychat",
       mode: "simulator",
+      leadEtiquetas: ["playground"],
     });
     return NextResponse.json({ ok: true, cleaned, flow });
   } catch (e) {
