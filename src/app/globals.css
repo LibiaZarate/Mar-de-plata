@@ -4,30 +4,31 @@
 
 @layer base {
   :root {
-    --background: 60 9% 98%;
-    --foreground: 24 10% 10%;
+    /* Paleta crema · rose · sage del wireframe */
+    --background: 38 36% 92%;          /* crema base #F6F0E4 */
+    --foreground: 28 16% 16%;          /* tinta #2B2620 */
 
-    --card: 0 0% 100%;
-    --card-foreground: 24 10% 10%;
+    --card: 38 50% 96%;                /* cream-50 #FBF7F0 */
+    --card-foreground: 28 16% 16%;
 
-    --primary: 350 35% 50%;
-    --primary-foreground: 0 0% 100%;
+    --muted: 35 28% 88%;
+    --muted-foreground: 30 12% 42%;    /* ink-mute */
 
-    --secondary: 30 20% 96%;
-    --secondary-foreground: 24 10% 18%;
+    --secondary: 35 32% 92%;
+    --secondary-foreground: 28 16% 22%;
 
-    --muted: 30 15% 94%;
-    --muted-foreground: 24 6% 45%;
+    --accent: 35 28% 88%;
+    --accent-foreground: 28 16% 22%;
 
-    --accent: 30 20% 92%;
-    --accent-foreground: 24 10% 18%;
+    --primary: 350 35% 62%;            /* rose-400 */
+    --primary-foreground: 38 50% 98%;
 
-    --destructive: 0 70% 50%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 350 55% 60%;        /* rose más fuerte para urgente */
+    --destructive-foreground: 38 50% 98%;
 
-    --border: 24 6% 88%;
-    --input: 24 6% 88%;
-    --ring: 350 35% 50%;
+    --border: 28 16% 80%;
+    --input: 28 16% 80%;
+    --ring: 350 35% 62%;
 
     --radius: 0.5rem;
   }
@@ -42,7 +43,7 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-feature-settings: "ss01", "cv11";
   }
 }
 
@@ -53,5 +54,60 @@
   .font-serif-display {
     font-family: "DM Serif Display", "Cormorant Garamond", Georgia, serif;
     letter-spacing: -0.01em;
+    font-feature-settings: "liga", "dlig";
   }
+  .font-italic-serif {
+    font-family: "DM Serif Display", Georgia, serif;
+    font-style: italic;
+  }
+  /* Pill con borde redondeado completo y borde fino */
+  .pill {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[10px] tracking-[0.14em] uppercase font-medium;
+  }
+  .pill-rose {
+    @apply pill border-rosey-300 text-rosey-500 bg-rosey-50;
+  }
+  .pill-sage {
+    @apply pill border-sage-400 text-sage-600 bg-sage-50;
+  }
+  .pill-ambr {
+    @apply pill border-ambr-400 text-ambr-600 bg-ambr-50;
+  }
+  .pill-sky {
+    @apply pill border-skyy-400 text-skyy-600 bg-skyy-50;
+  }
+  .pill-lila {
+    @apply pill border-lila-400 text-lila-600 bg-lila-50;
+  }
+  .pill-stone {
+    @apply pill border-foreground/30 text-foreground/70 bg-card;
+  }
+  /* Card con borde fino crema y corners */
+  .card-cream {
+    @apply rounded-lg border border-foreground/15 bg-card;
+  }
+  /* Botón estilo wireframe (outline) */
+  .btn-outline {
+    @apply inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-foreground/30 text-sm font-medium bg-card hover:bg-secondary transition-colors;
+  }
+  .btn-rose {
+    @apply inline-flex items-center gap-2 px-3.5 py-1.5 rounded-md border border-rosey-300 bg-rosey-100 text-foreground hover:bg-rosey-200 transition-colors text-sm font-medium;
+  }
+  /* Línea punteada vertical (tu día) */
+  .divider-dotted-v {
+    background-image: linear-gradient(currentColor 35%, transparent 0);
+    background-position: top;
+    background-size: 1px 6px;
+    background-repeat: repeat-y;
+  }
+}
+
+/* Sparkle path animation */
+.spark path {
+  stroke-dasharray: 200;
+  stroke-dashoffset: 200;
+  animation: dash 1.4s ease-out forwards;
+}
+@keyframes dash {
+  to { stroke-dashoffset: 0; }
 }
