@@ -3,6 +3,7 @@
 // En producción cada cold start lo resetea — está bien, es para depurar.
 
 import type { CleanedPayload } from "./clean";
+import type { HandoffGuardrailPlan } from "./handoff-guardrail";
 
 export type WebhookLogEntry = {
   id: string;
@@ -14,6 +15,7 @@ export type WebhookLogEntry = {
   cleaned: CleanedPayload;
   rawBody: Record<string, unknown>;
   headers: Record<string, string>;
+  guardrail: HandoffGuardrailPlan | null;
 };
 
 const MAX_ENTRIES = 50;

@@ -10,6 +10,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { cleanManychatBody } from "@/lib/webhook/clean";
+import { checkGuardrails } from "@/lib/webhook/guardrails";
+import {
+  executeHandoffGuardrail,
+  planHandoffGuardrail,
+  type HandoffGuardrailPlan,
+} from "@/lib/webhook/handoff-guardrail";
 import {
   listWebhookLog,
   pushWebhookLog,
@@ -38,6 +44,16 @@ export async function POST(req: NextRequest) {
 
   const cleaned = cleanManychatBody(rawBody);
 
+  // Guardrails de capa 1 — corre ANTES que cualquier otra cosa.
+  // Si hay match, planeamos el handoff_directo_guardrail y salimos del
+  // pipeline normal (no Verificador, no Agente).
+  const match = checkGuardrails(cleaned.userText);
+  let guardrailPlan: HandoffGuardrailPlan | null = null;
+  if (match) {
+    guardrailPlan = planHandoffGuardrail(cleaned, match);
+    await executeHandoffGuardrail(guardrailPlan);
+  }
+
   const headers: Record<string, string> = {};
   req.headers.forEach((value, key) => {
     // Evitamos meter cabeceras hop-by-hop y cookies sensibles en el log.
@@ -62,18 +78,23 @@ export async function POST(req: NextRequest) {
     cleaned,
     rawBody,
     headers,
+    guardrail: guardrailPlan,
   };
 
   pushWebhookLog(entry);
 
   // Útil para `vercel logs` o terminal local
   console.info(
-    `[webhook/manychat] ${source} · ${cleaned.sessionId} · ${cleaned.tipoMensajeOriginal} · "${cleaned.userText.slice(0, 80)}"`,
+    `[webhook/manychat] ${source} · ${cleaned.sessionId} · ${cleaned.tipoMensajeOriginal}` +
+      (guardrailPlan
+        ? ` · GUARDRAIL ${guardrailPlan.match.category}:${guardrailPlan.match.keyword}`
+        : "") +
+      ` · "${cleaned.userText.slice(0, 80)}"`,
   );
 
   return NextResponse.json({
     ok: true,
-    phase: 2,
+    phase: 3,
     received_at: entry.receivedAt,
     cleaned,
     source,
@@ -81,6 +102,16 @@ export async function POST(req: NextRequest) {
       session_id: kaizenSessionId,
       callback: kaizenCallback,
     },
+    guardrail: guardrailPlan
+      ? {
+          hit: true,
+          category: guardrailPlan.match.category,
+          keyword: guardrailPlan.match.keyword,
+          motivo: guardrailPlan.match.motivo,
+          action: "handoff_directo_guardrail",
+          steps_pending: guardrailPlan.steps.length,
+        }
+      : { hit: false },
   });
 }
 

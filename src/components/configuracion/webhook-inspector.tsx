@@ -2,7 +2,16 @@
 
 import useSWR from "swr";
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Mic, MessageSquare } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Mic,
+  MessageSquare,
+  ShieldAlert,
+  Clock4,
+  Hourglass,
+  Circle,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type CleanedPayload = {
@@ -17,6 +26,30 @@ type CleanedPayload = {
   subscriberId: string | null;
 };
 
+type HandoffStep = {
+  id: string;
+  description: string;
+  status: "stub" | "pending-fase-4" | "pending-fase-7";
+};
+
+type GuardrailPlan = {
+  trigger: "guardrail_critico";
+  match: {
+    keyword: string;
+    category: "humano" | "reclamo";
+    motivo: string;
+    matchedAt: number;
+  };
+  payload: {
+    numero_whatsapp: string;
+    motivo: string;
+    prioridad: "urgente";
+    mensaje_original: string;
+    subscriber_id: string | null;
+  };
+  steps: HandoffStep[];
+};
+
 type Entry = {
   id: string;
   receivedAt: string;
@@ -27,6 +60,7 @@ type Entry = {
   cleaned: CleanedPayload;
   rawBody: Record<string, unknown>;
   headers: Record<string, string>;
+  guardrail: GuardrailPlan | null;
 };
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -96,10 +130,16 @@ export function WebhookInspector() {
         {data?.entries?.map((entry) => {
           const open = expanded === entry.id;
           const t = new Date(entry.receivedAt);
+          const hasGuardrail = entry.guardrail !== null;
           return (
             <li
               key={entry.id}
-              className="rounded-lg border border-border bg-card overflow-hidden"
+              className={cn(
+                "rounded-lg border bg-card overflow-hidden transition-colors",
+                hasGuardrail
+                  ? "border-destructive/50 ring-1 ring-destructive/20"
+                  : "border-border",
+              )}
             >
               <button
                 onClick={() => setExpanded(open ? null : entry.id)}
@@ -128,6 +168,13 @@ export function WebhookInspector() {
                   <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
                 )}
 
+                {hasGuardrail && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase border border-destructive/60 text-destructive bg-destructive/10">
+                    <ShieldAlert className="h-3 w-3" />
+                    {entry.guardrail!.match.category}
+                  </span>
+                )}
+
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium truncate">
                     {entry.cleaned.userText || (
@@ -138,6 +185,11 @@ export function WebhookInspector() {
                   </div>
                   <div className="text-[11px] text-muted-foreground font-mono truncate">
                     {entry.cleaned.sessionId} · {entry.cleaned.canalOrigen}
+                    {hasGuardrail && (
+                      <span className="text-destructive ml-2">
+                        · match &ldquo;{entry.guardrail!.match.keyword}&rdquo;
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -152,6 +204,10 @@ export function WebhookInspector() {
 
               {open && (
                 <div className="border-t border-border bg-muted/30 px-4 py-4 space-y-3">
+                  {entry.guardrail && (
+                    <GuardrailPanel plan={entry.guardrail} />
+                  )}
+
                   <Section title="Payload limpio (clean())">
                     <pre className="text-[11px] font-mono whitespace-pre-wrap break-all">
                       {JSON.stringify(entry.cleaned, null, 2)}
@@ -216,4 +272,85 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       </div>
     </div>
   );
+}
+
+function GuardrailPanel({ plan }: { plan: GuardrailPlan }) {
+  return (
+    <div className="rounded border border-destructive/40 bg-destructive/5 px-3 py-3 space-y-3">
+      <div className="flex items-start gap-3">
+        <ShieldAlert
+          className="h-5 w-5 text-destructive shrink-0 mt-0.5"
+          strokeWidth={1.7}
+        />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-destructive">
+            Guardrail crítico disparado
+          </div>
+          <div className="text-[12px] text-muted-foreground mt-0.5">
+            categoría <code className="text-foreground">{plan.match.category}</code> ·
+            keyword <code className="text-foreground">&ldquo;{plan.match.keyword}&rdquo;</code> ·
+            motivo <code className="text-foreground">{plan.match.motivo}</code>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div className="label-xs mb-1.5">Payload del sub-workflow</div>
+        <pre className="text-[11px] font-mono bg-card border border-border rounded px-3 py-2 whitespace-pre-wrap break-all">
+          {JSON.stringify(plan.payload, null, 2)}
+        </pre>
+      </div>
+
+      <div>
+        <div className="label-xs mb-2">
+          Acciones del sub-workflow ({plan.steps.length})
+        </div>
+        <ol className="space-y-1.5">
+          {plan.steps.map((step, i) => (
+            <li
+              key={step.id}
+              className="flex items-start gap-2.5 text-[12px] leading-relaxed"
+            >
+              <StatusDot status={step.status} />
+              <div className="flex-1 min-w-0">
+                <span className="text-muted-foreground tabular-nums mr-2">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <span className="text-foreground">{step.description}</span>
+                <span
+                  className={cn(
+                    "ml-2 text-[10px] tracking-wider uppercase px-1.5 py-0.5 rounded border",
+                    step.status === "stub" &&
+                      "border-muted text-muted-foreground bg-muted",
+                    step.status === "pending-fase-4" &&
+                      "border-yellow-600/40 text-yellow-700 bg-yellow-50",
+                    step.status === "pending-fase-7" &&
+                      "border-blue-600/40 text-blue-700 bg-blue-50",
+                  )}
+                >
+                  {step.status === "stub"
+                    ? "stub"
+                    : step.status === "pending-fase-4"
+                      ? "fase 4"
+                      : "fase 7"}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </div>
+  );
+}
+
+function StatusDot({ status }: { status: HandoffStep["status"] }) {
+  const Icon =
+    status === "stub" ? Circle : status === "pending-fase-4" ? Hourglass : Clock4;
+  const color =
+    status === "stub"
+      ? "text-muted-foreground"
+      : status === "pending-fase-4"
+        ? "text-yellow-600"
+        : "text-blue-600";
+  return <Icon className={cn("h-3.5 w-3.5 shrink-0 mt-0.5", color)} />;
 }
