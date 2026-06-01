@@ -11,6 +11,34 @@ export type LeadLookupResult = {
   created: boolean;
 };
 
+// La tabla `leads` tiene un CHECK constraint en canal_origen.
+// Los valores permitidos son los que usa el dashboard: Meta, TikTok,
+// Grupo, Recurrente, Orgánico. Cualquier otro valor (ej. "playground",
+// "meta_ctwa") debe normalizarse antes de insertar.
+const CANALES_VALIDOS = new Set([
+  "Meta",
+  "TikTok",
+  "Grupo",
+  "Recurrente",
+  "Orgánico",
+]);
+
+function normalizarCanal(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (CANALES_VALIDOS.has(trimmed)) return trimmed;
+  // Mapeos comunes de ManyChat / Meta
+  const lower = trimmed.toLowerCase();
+  if (lower.includes("meta") || lower.includes("ctwa") || lower.includes("facebook"))
+    return "Meta";
+  if (lower.includes("tiktok") || lower.includes("tt")) return "TikTok";
+  if (lower.includes("grupo") || lower.includes("group")) return "Grupo";
+  if (lower.includes("recur")) return "Recurrente";
+  if (lower.includes("organic") || lower.includes("orgánic")) return "Orgánico";
+  // Para test/playground/desconocido → null. La columna acepta NULL.
+  return null;
+}
+
 export async function findOrCreateLead(
   cleaned: CleanedPayload,
 ): Promise<LeadLookupResult> {
@@ -30,26 +58,52 @@ export async function findOrCreateLead(
     return { lead: existing as Lead, created: false };
   }
 
+  const baseInsert = {
+    numero_whatsapp: numero,
+    estado: "lead_nueva",
+    canal_origen: normalizarCanal(cleaned.canalOrigen),
+    anuncio_id: cleaned.anuncioId,
+    primer_contacto: new Date().toISOString(),
+    ticket_promedio: 0,
+    compras_totales: 0,
+    monto_acumulado: 0,
+    reclamos_historicos: 0,
+  };
+
   const { data: inserted, error: insErr } = await supabase
     .from("leads")
-    .insert({
-      numero_whatsapp: numero,
-      estado: "lead_nueva",
-      canal_origen: cleaned.canalOrigen,
-      anuncio_id: cleaned.anuncioId,
-      primer_contacto: new Date().toISOString(),
-      ticket_promedio: 0,
-      compras_totales: 0,
-      monto_acumulado: 0,
-      reclamos_historicos: 0,
-    })
+    .insert(baseInsert)
     .select("*")
     .single();
 
-  if (insErr) {
-    throw new Error(`leads INSERT falló: ${insErr.message}`);
+  if (!insErr) {
+    return { lead: inserted as Lead, created: true };
   }
-  return { lead: inserted as Lead, created: true };
+
+  // Si falló por un constraint, reintentamos con valores mínimos.
+  // (Por ejemplo si canal_origen tiene una whitelist diferente a la
+  // que conocemos.)
+  if (insErr.code === "23514" || /check constraint/i.test(insErr.message)) {
+    const { data: retry, error: retryErr } = await supabase
+      .from("leads")
+      .insert({
+        numero_whatsapp: numero,
+        estado: "lead_nueva",
+        primer_contacto: new Date().toISOString(),
+        ticket_promedio: 0,
+        compras_totales: 0,
+        monto_acumulado: 0,
+        reclamos_historicos: 0,
+      })
+      .select("*")
+      .single();
+    if (retryErr) {
+      throw new Error(`leads INSERT falló (retry sin canal): ${retryErr.message}`);
+    }
+    return { lead: retry as Lead, created: true };
+  }
+
+  throw new Error(`leads INSERT falló: ${insErr.message}`);
 }
 
 // Round-robin de asesora disponible · CLAUDE.md §11 tool 4 / §12 paso 2.
