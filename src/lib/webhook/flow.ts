@@ -31,9 +31,11 @@ import {
   type ToolResult,
 } from "@/lib/agent/tools";
 import { sendToClient } from "@/lib/agent/manychat";
+import { defaultMode, type FlowMode } from "@/lib/agent/mode";
 
 export type FlowResult = {
   ok: boolean;
+  mode: FlowMode;
   demo: boolean;
   earlyExit: null | { reason: "guardrail"; plan: HandoffGuardrailPlan };
   leadCreated: boolean;
@@ -43,6 +45,13 @@ export type FlowResult = {
   toolResult: ToolResult | null;
   agenteTexto: string;
   fragmentos: string[];
+  /** Mensajes que se enviarían/enviaron al cliente. En simulator captura todo. */
+  outbound: Array<{
+    source: "tool" | "agente";
+    type: "text" | "image";
+    text?: string;
+    url?: string;
+  }>;
   deliveryNotes: string[];
   durationMs: number;
 };
@@ -51,7 +60,10 @@ export async function runFlowMadre(input: {
   cleaned: CleanedPayload;
   kaizenSessionId?: string | null;
   source: "manychat" | "kaizen";
+  /** Forzar modo, si no se especifica usa defaultMode() (env var) */
+  mode?: FlowMode;
 }): Promise<FlowResult> {
+  const mode: FlowMode = input.mode ?? defaultMode();
   const start = Date.now();
   const supabase = createAdminClient();
   const numero = input.cleaned.whatsappPhone ?? input.cleaned.sessionId;
@@ -66,16 +78,18 @@ export async function runFlowMadre(input: {
     await executeHandoffGuardrail(plan);
 
     // Cablear los pending-fase-4 del sub-workflow (CLAUDE.md §12)
-    await runHandoffGuardrailSteps({
+    const guardrailOutbound = await runHandoffGuardrailSteps({
       numero,
       mensajeOriginal: input.cleaned.userText,
       motivo: plan.payload.motivo,
       subscriberId: input.cleaned.subscriberId,
       kaizenSessionId: input.kaizenSessionId ?? null,
+      mode,
     });
 
     return {
       ok: true,
+      mode,
       demo: false,
       earlyExit: { reason: "guardrail", plan },
       leadCreated: created,
@@ -85,6 +99,7 @@ export async function runFlowMadre(input: {
       toolResult: null,
       agenteTexto: "",
       fragmentos: [],
+      outbound: guardrailOutbound,
       deliveryNotes: [`guardrail ${plan.match.category}:${plan.match.keyword}`],
       durationMs: Date.now() - start,
     };
@@ -157,10 +172,19 @@ export async function runFlowMadre(input: {
     numero,
     subscriberId: input.cleaned.subscriberId,
     kaizenSessionId: input.kaizenSessionId ?? null,
+    mode,
   });
 
   // ── Paso 16: parse loop sobre el texto del Agente ───────
   const fragmentos = parseLoop(agente.texto);
+
+  // ── Capturar outbound (lo que mandó la tool + lo que mandó el Agente)
+  const outbound: FlowResult["outbound"] = [];
+  if (toolResult) {
+    for (const m of toolResult.outboundMessages) {
+      outbound.push({ source: "tool", type: m.type, text: m.text, url: m.url });
+    }
+  }
 
   // ── Paso 17: enviar a WhatsApp / Kaizen ─────────────────
   const deliveryNotes: string[] = [];
@@ -173,10 +197,13 @@ export async function runFlowMadre(input: {
       const result = await sendToClient({
         subscriberId: input.cleaned.subscriberId,
         kaizenSessionId: input.kaizenSessionId ?? null,
+        mode,
         messages: [{ type: "text", text: fragmento }],
       });
       deliveryNotes.push(`${result.via}${result.status ? " " + result.status : ""}`);
-      await delay(2500);
+      outbound.push({ source: "agente", type: "text", text: fragmento });
+      // En simulator no esperamos 2.5s — es instantáneo
+      if (mode === "production") await delay(2500);
     }
   }
 
@@ -209,6 +236,7 @@ export async function runFlowMadre(input: {
 
   return {
     ok: true,
+    mode,
     demo: !!verificador._demo || !!agente._demo,
     earlyExit: null,
     leadCreated: created,
@@ -218,6 +246,7 @@ export async function runFlowMadre(input: {
     toolResult,
     agenteTexto: agente.texto,
     fragmentos,
+    outbound,
     deliveryNotes,
     durationMs: Date.now() - start,
   };
@@ -228,6 +257,7 @@ async function executeTool(input: {
   numero: string;
   subscriberId: string | null;
   kaizenSessionId: string | null;
+  mode: FlowMode;
 }): Promise<ToolResult | null> {
   const v = input.verificador;
   const tool = v.accion_recomendada.tool_principal;
@@ -236,6 +266,7 @@ async function executeTool(input: {
     numero_whatsapp: input.numero,
     subscriber_id: input.subscriberId,
     kaizen_session_id: input.kaizenSessionId,
+    mode: input.mode,
   };
 
   // Override: si requiere_handoff = true, forzamos handoff_asesora.
@@ -302,15 +333,20 @@ async function runHandoffGuardrailSteps(args: {
   motivo: string;
   subscriberId: string | null;
   kaizenSessionId: string | null;
-}): Promise<void> {
+  mode: FlowMode;
+}): Promise<FlowResult["outbound"]> {
   const supabase = createAdminClient();
+  const outbound: FlowResult["outbound"] = [];
 
   // Mensaje puente
+  const puenteTxt = "Entiendo · te paso con una asesora real ahora mismo 💗";
   await sendToClient({
     subscriberId: args.subscriberId,
     kaizenSessionId: args.kaizenSessionId,
-    messages: [{ type: "text", text: "Entiendo · te paso con una asesora real ahora mismo 💗" }],
+    mode: args.mode,
+    messages: [{ type: "text", text: puenteTxt }],
   });
+  outbound.push({ source: "tool", type: "text", text: puenteTxt });
 
   // Round-robin
   const { data } = await supabase
@@ -322,7 +358,7 @@ async function runHandoffGuardrailSteps(args: {
     .order("ultima_asignacion", { ascending: true, nullsFirst: true })
     .limit(1)
     .maybeSingle();
-  if (!data) return;
+  if (!data) return outbound;
 
   const asesoraId = data.id as string;
   const asesoraNombre = data.nombre_completo as string;
@@ -394,6 +430,8 @@ async function runHandoffGuardrailSteps(args: {
     tool_ejecutada: "handoff_directo_guardrail",
     status: "handoff_iniciado",
   });
+
+  return outbound;
 }
 
 function delay(ms: number): Promise<void> {

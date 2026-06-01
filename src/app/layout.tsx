@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Inter, DM_Serif_Display } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/sidebar";
+import { ModeBanner } from "@/components/layout/mode-banner";
+import { defaultMode } from "@/lib/agent/mode";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -24,12 +26,16 @@ export const metadata: Metadata = {
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const mode = defaultMode();
   return (
     <html lang="es" className={`${inter.variable} ${serif.variable}`}>
       <body className="min-h-screen bg-background font-sans">
         <div className="flex min-h-screen">
           <Sidebar />
-          <main className="flex-1 min-w-0">{children}</main>
+          <main className="flex-1 min-w-0 flex flex-col">
+            <ModeBanner mode={mode} />
+            <div className="flex-1">{children}</div>
+          </main>
         </div>
       </body>
     </html>

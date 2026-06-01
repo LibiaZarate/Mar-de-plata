@@ -1,6 +1,9 @@
 // Endpoint del Playground: simula un webhook de ManyChat con el
-// mensaje que escribe Mar y devuelve el flow completo (incluyendo
-// brief del Verificador, tool ejecutada y respuesta del Agente).
+// mensaje que escribe Mar y devuelve el flow completo.
+//
+// SIEMPRE fuerza mode="simulator" aunque MODO_PRODUCCION esté
+// activado — el Playground nunca debe mandar mensajes reales a
+// WhatsApp.
 
 import { NextRequest, NextResponse } from "next/server";
 import { cleanManychatBody } from "@/lib/webhook/clean";
@@ -20,7 +23,11 @@ export async function POST(req: NextRequest) {
   });
 
   try {
-    const flow = await runFlowMadre({ cleaned, source: "manychat" });
+    const flow = await runFlowMadre({
+      cleaned,
+      source: "manychat",
+      mode: "simulator",
+    });
     return NextResponse.json({ ok: true, cleaned, flow });
   } catch (e) {
     return NextResponse.json(

@@ -2,9 +2,15 @@
 // Cada tool: ejecuta su acción (POST a ManyChat + UPDATEs/INSERTs a Supabase)
 // y devuelve un ToolResult. El orquestador del flujo decide cuál ejecutar
 // según `accion_recomendada.tool_principal` del Verificador.
+//
+// En modo "simulator", las escrituras a Supabase SÍ ocurren (para que se
+// vea el efecto real en el dashboard) pero el envío a ManyChat se omite.
+// Los mensajes que se hubieran enviado quedan en `outboundMessages` para
+// que la UI del Playground los pinte como burbujas de Sirena.
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendToClient } from "../manychat";
+import type { FlowMode } from "../mode";
 
 export type ToolName =
   | "enviar_imagen_faq"
@@ -19,6 +25,12 @@ export type ToolResult = {
   ok: boolean;
   outboundMessages: Array<{ type: "text" | "image"; text?: string; url?: string }>;
   notes: string[];
+};
+
+type CommonArgs = {
+  subscriber_id: string | null;
+  kaizen_session_id?: string | null;
+  mode: FlowMode;
 };
 
 const CATALOGOS = {
@@ -46,9 +58,7 @@ export async function enviarImagenFaq(args: {
   numero_whatsapp: string;
   id_imagen: number;
   texto_acompanante: string;
-  subscriber_id: string | null;
-  kaizen_session_id?: string | null;
-}): Promise<ToolResult> {
+} & CommonArgs): Promise<ToolResult> {
   const supabase = createAdminClient();
   const { data: img, error: imgErr } = await supabase
     .from("imagenes_faq")
@@ -76,6 +86,7 @@ export async function enviarImagenFaq(args: {
   await sendToClient({
     subscriberId: args.subscriber_id,
     kaizenSessionId: args.kaizen_session_id ?? null,
+    mode: args.mode,
     messages: messages as Array<{ type: "text"; text: string } | { type: "image"; url: string }>,
   });
 
@@ -125,9 +136,7 @@ export async function enviarCatalogo(args: {
   numero_whatsapp: string;
   coleccion: "pandora" | "taxco" | "tows";
   texto_acompanante: string;
-  subscriber_id: string | null;
-  kaizen_session_id?: string | null;
-}): Promise<ToolResult> {
+} & CommonArgs): Promise<ToolResult> {
   const supabase = createAdminClient();
   const claveMap = {
     pandora: "catalogo_pandora_url",
@@ -142,6 +151,7 @@ export async function enviarCatalogo(args: {
   await sendToClient({
     subscriberId: args.subscriber_id,
     kaizenSessionId: args.kaizen_session_id ?? null,
+    mode: args.mode,
     messages,
   });
 
@@ -194,9 +204,7 @@ export async function enviarCatalogo(args: {
 export async function invitarGrupo(args: {
   numero_whatsapp: string;
   texto_acompanante: string;
-  subscriber_id: string | null;
-  kaizen_session_id?: string | null;
-}): Promise<ToolResult> {
+} & CommonArgs): Promise<ToolResult> {
   const supabase = createAdminClient();
   const link = await readConfig("link_grupo_abierto", LINK_GRUPO);
 
@@ -206,6 +214,7 @@ export async function invitarGrupo(args: {
   await sendToClient({
     subscriberId: args.subscriber_id,
     kaizenSessionId: args.kaizen_session_id ?? null,
+    mode: args.mode,
     messages,
   });
 
@@ -259,9 +268,7 @@ export async function handoffAsesora(args: {
   motivo: string;
   prioridad: "normal" | "alta" | "urgente";
   contexto_breve: string | null;
-  subscriber_id: string | null;
-  kaizen_session_id?: string | null;
-}): Promise<ToolResult> {
+} & CommonArgs): Promise<ToolResult> {
   const supabase = createAdminClient();
 
   // Asesora habitual (si existe) o round-robin
@@ -367,6 +374,7 @@ export async function handoffAsesora(args: {
   await sendToClient({
     subscriberId: args.subscriber_id,
     kaizenSessionId: args.kaizen_session_id ?? null,
+    mode: args.mode,
     messages,
   });
 

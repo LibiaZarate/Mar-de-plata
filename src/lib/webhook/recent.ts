@@ -2,14 +2,22 @@ import type { CleanedPayload } from "./clean";
 import type { HandoffGuardrailPlan } from "./handoff-guardrail";
 import type { VerificadorOutput } from "@/lib/agent/verificador";
 import type { ToolResult } from "@/lib/agent/tools";
+import type { FlowMode } from "@/lib/agent/mode";
 
 export type WebhookFlowSummary = {
+  mode: FlowMode;
   demo: boolean;
   leadCreated: boolean;
   verificador: VerificadorOutput;
   toolResult: ToolResult | null;
   agenteTexto: string;
   fragmentos: string[];
+  outbound: Array<{
+    source: "tool" | "agente";
+    type: "text" | "image";
+    text?: string;
+    url?: string;
+  }>;
   deliveryNotes: string[];
   durationMs: number;
 };

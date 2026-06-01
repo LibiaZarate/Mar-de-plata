@@ -1,6 +1,8 @@
 // Cliente ManyChat — POST a /fb/sending/sendContent.
 // Soporta modo Kaizen (testing) via X-Kaizen-Session header.
-// Si MANYCHAT_API_KEY no está definida, solo loguea y retorna ok=false.
+// Si mode='simulator' o MANYCHAT_API_KEY falta, solo se loguea.
+
+import type { FlowMode } from "./mode";
 
 const MANYCHAT_URL = "https://api.manychat.com/fb/sending/sendContent";
 const KAIZEN_URL = "https://kaizen.azxion.com/api/simulator/inbound";
@@ -12,7 +14,7 @@ export type WhatsappMessage =
 export type SendResult = {
   ok: boolean;
   delivered: boolean;
-  via: "manychat" | "kaizen" | "stub";
+  via: "manychat" | "kaizen" | "simulator" | "stub";
   status?: number;
   error?: string;
 };
@@ -21,8 +23,15 @@ export async function sendToClient(input: {
   subscriberId: string | null;
   messages: WhatsappMessage[];
   kaizenSessionId?: string | null;
+  mode: FlowMode;
 }): Promise<SendResult> {
-  // Modo Kaizen
+  // Modo simulador: no se manda nada a ManyChat ni Kaizen.
+  // Las tools ya devuelven los `outboundMessages` para que la UI los pinte.
+  if (input.mode === "simulator") {
+    return { ok: true, delivered: false, via: "simulator" };
+  }
+
+  // Kaizen testing tiene precedencia incluso en producción
   if (input.kaizenSessionId) {
     try {
       const r = await fetch(KAIZEN_URL, {
@@ -48,7 +57,7 @@ export async function sendToClient(input: {
   const key = process.env.MANYCHAT_API_KEY;
   if (!key || !input.subscriberId) {
     console.info(
-      `[manychat·stub] subscriber=${input.subscriberId} msgs=${input.messages.length}`,
+      `[manychat·stub] subscriber=${input.subscriberId} msgs=${input.messages.length} (sin MANYCHAT_API_KEY)`,
     );
     return { ok: true, delivered: false, via: "stub" };
   }

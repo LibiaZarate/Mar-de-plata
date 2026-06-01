@@ -69,12 +69,14 @@ export async function POST(req: NextRequest) {
     guardrail: flow?.earlyExit?.plan ?? null,
     flow: flow
       ? {
+          mode: flow.mode,
           demo: flow.demo,
           leadCreated: flow.leadCreated,
           verificador: flow.verificador,
           toolResult: flow.toolResult,
           agenteTexto: flow.agenteTexto,
           fragmentos: flow.fragmentos,
+          outbound: flow.outbound,
           deliveryNotes: flow.deliveryNotes,
           durationMs: flow.durationMs,
         }
@@ -112,11 +114,13 @@ export async function POST(req: NextRequest) {
       : { hit: false },
     flow: flow
       ? {
+          mode: flow.mode,
           demo: flow.demo,
           lead_created: flow.leadCreated,
           tool: flow.toolResult?.tool ?? null,
           tool_ok: flow.toolResult?.ok ?? null,
           fragmentos: flow.fragmentos.length,
+          outbound: flow.outbound.length,
           duration_ms: flow.durationMs,
         }
       : null,

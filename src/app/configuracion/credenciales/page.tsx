@@ -1,5 +1,6 @@
 import { CredencialesPanel } from "@/components/configuracion/credenciales-panel";
 import { createClient } from "@/lib/supabase/server";
+import { defaultMode } from "@/lib/agent/mode";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ export default async function CredencialesPage() {
     openrouter: process.env.OPENROUTER_API_KEY ? "ok" : "warn",
     manychat: process.env.MANYCHAT_API_KEY ? "ok" : "warn",
     openai: process.env.OPENAI_API_KEY ? "ok" : "warn",
+    modo: defaultMode(),
   } as const;
   return <CredencialesPanel statuses={statuses} />;
 }

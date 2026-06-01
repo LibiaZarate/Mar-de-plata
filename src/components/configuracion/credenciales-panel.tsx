@@ -15,6 +15,8 @@ import {
   Brain,
   MessageSquare,
   Mic,
+  Radio,
+  Beaker,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +28,7 @@ type Statuses = {
   openrouter: Status;
   manychat: Status;
   openai: Status;
+  modo: "production" | "simulator";
 };
 
 type Cred = {
@@ -109,8 +112,15 @@ const CREDS: Cred[] = [
 ];
 
 export function CredencialesPanel({ statuses }: { statuses: Statuses }) {
-  const okCount = Object.values(statuses).filter((s) => s === "ok").length;
-  const total = Object.values(statuses).length;
+  const credStatuses = {
+    supabasePublic: statuses.supabasePublic,
+    supabaseService: statuses.supabaseService,
+    openrouter: statuses.openrouter,
+    manychat: statuses.manychat,
+    openai: statuses.openai,
+  } as const;
+  const okCount = Object.values(credStatuses).filter((s) => s === "ok").length;
+  const total = Object.values(credStatuses).length;
 
   return (
     <div className="px-10 py-6 space-y-6">
@@ -122,13 +132,82 @@ export function CredencialesPanel({ statuses }: { statuses: Statuses }) {
         </div>
       </div>
 
+      <ModoCard modo={statuses.modo} />
+
       <VercelGuide />
 
       <section className="space-y-3">
         {CREDS.map((c) => (
-          <CredCard key={c.id} cred={c} status={statuses[c.id]} />
+          <CredCard
+            key={c.id}
+            cred={c}
+            status={credStatuses[c.id as keyof typeof credStatuses]}
+          />
         ))}
       </section>
+    </div>
+  );
+}
+
+function ModoCard({ modo }: { modo: "production" | "simulator" }) {
+  const isProd = modo === "production";
+  return (
+    <div
+      className={cn(
+        "rounded-lg border p-5",
+        isProd
+          ? "border-rosey-300 bg-rosey-50/50"
+          : "border-sage-300 bg-sage-50/50",
+      )}
+    >
+      <div className="flex items-start gap-3">
+        {isProd ? (
+          <Radio className="h-5 w-5 text-rosey-500 shrink-0 mt-0.5" />
+        ) : (
+          <Beaker className="h-5 w-5 text-sage-600 shrink-0 mt-0.5" />
+        )}
+        <div className="flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="font-serif-display text-[22px] leading-none">
+              Modo de operación
+            </div>
+            <span
+              className={cn(
+                "pill",
+                isProd
+                  ? "border-rosey-300 bg-rosey-50 text-rosey-500"
+                  : "border-sage-300 bg-sage-50 text-sage-600",
+              )}
+            >
+              {isProd ? "Producción" : "Simulador"}
+            </span>
+          </div>
+          <p className="text-[12px] text-foreground/70 mt-2 leading-relaxed">
+            {isProd ? (
+              <>
+                Sirena está enviando mensajes <strong>reales</strong> a WhatsApp vía ManyChat. Los
+                clientes ya hablan con el bot. El Playground sigue siendo simulador (no envía).
+              </>
+            ) : (
+              <>
+                Todo el flujo corre normal — Supabase, OpenRouter, las 5 tools, alertas, eventos —{" "}
+                <strong>pero nada se envía a WhatsApp</strong>. Ideal para probar antes de salir a
+                producción.
+              </>
+            )}
+          </p>
+          <div className="mt-3 flex items-start gap-2">
+            <code className="font-mono text-[11px] bg-cream-100 border border-foreground/10 rounded px-2 py-1 inline-block">
+              MODO_PRODUCCION
+            </code>
+            <span className="text-[12px] text-foreground/65">
+              {isProd
+                ? '= "true" en Vercel. Para volver a simulador, borra la variable o pon "false" + redeploy.'
+                : 'no está activado. Para salir a producción, pon = "true" en Vercel + redeploy.'}
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
