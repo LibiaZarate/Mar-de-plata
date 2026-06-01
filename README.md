@@ -1,89 +1,63 @@
 # Mar de Plata · Taxco Workspace
 
-Dashboard operativo para el taller de joyería **Mar de Plata** (Taxco).
-Conectado en vivo a la base de datos de Supabase donde n8n + Sirena
-(Claude) registran cada conversación de WhatsApp.
+Dashboard + AI Agent del taller de joyería de plata 925 **Mar de Plata Taxco**. Reemplaza el orquestador de n8n con código propio en Next.js 14.
 
-## Vistas
-
-| Ruta | Contenido |
-|---|---|
-| `/` | **Inicio** · Bloque A (KPIs leads/efectividad/facturación), Bloque B (operación), Bloque C (embudo con detección de cuello de botella) |
-| `/pipeline` | Kanban en vivo sobre la tabla `leads` con drag & drop entre estados |
-| `/equipo` | Tarjetas de asesoras (`asesoras` + `cierres_diarios`) + widget **Cierres del día** |
-
-## Funcional
-
-- **Cierres del día** (en `/equipo`) — busca el lead por nombre o número, sube comprobante a Supabase Storage (`bucket "comprobantes"`), inserta en `cierres_diarios` y actualiza `leads.estado = 'pagada'`. SWR invalida la facturación, el embudo y las métricas del equipo al instante.
-- **Pipeline Kanban** — arrastra una tarjeta entre columnas o usa el botón “→”. Cada movimiento hace `UPDATE leads SET estado = ...`.
-- **Búsqueda global** (`⌘K`) — autocompleta páginas y leads desde Supabase.
-- **Detección automática del cuello de botella** — se calcula del lado del cliente comparando la diferencia de % entre cada par de etapas consecutivas del embudo del día.
-- **Polling 30s + indicador “actualizado hace X seg”** en la barra superior.
+> Lee primero **[CLAUDE.md](./CLAUDE.md)** — es la base de conocimiento completa del proyecto (schema, prompts oficiales, las 5 tools, flujo madre paso a paso, las 4 pantallas, roadmap).
 
 ## Stack
 
-- Vite + React 19 + TypeScript
-- Tailwind CSS 3
-- React Router 6
-- `@supabase/supabase-js` + SWR (refresh 30s)
-- Charts SVG hechos a mano (sin recharts)
+- **Next.js 14** App Router + TypeScript estricto
+- **Tailwind CSS** + primitivas Radix (shadcn-style)
+- **Supabase** (`@supabase/ssr` para SSR + `@supabase/supabase-js` para tools server-side)
+- **SWR** (refresh 30s)
+- **Recharts** (gráficas)
+- **OpenRouter** (Verificador Haiku + Agente Madre Opus)
+- **ManyChat** (delivery WhatsApp)
+- **Redis** (buffer de 5s entre mensajes)
+- **OpenAI Whisper** (transcripción audio)
 
 ## Setup
 
 ```bash
 npm install
-cp .env .env.local       # si necesitas overridear
+cp .env.local.example .env.local
+# Rellena .env.local con: SUPABASE_SERVICE_ROLE_KEY, OPENROUTER_API_KEY,
+# MANYCHAT_API_KEY, OPENAI_API_KEY, REDIS_URL
 npm run dev
 ```
 
-`.env` ya trae las credenciales del proyecto Supabase de Mar de Plata.
-
-### Variables
-
-| Var | Default |
-|---|---|
-| `VITE_SUPABASE_URL` | `https://nbciljmueoihtzznmvdg.supabase.co` |
-| `VITE_SUPABASE_ANON_KEY` | (anon key del proyecto) |
-| `VITE_SUPABASE_BUCKET_COMPROBANTES` | `comprobantes` |
-| `VITE_TZ` | `America/Mexico_City` |
-
-## Tablas que consume
-
-`leads`, `estado_conversacion_actual`, `asesoras`, `alertas`, `cierres_diarios`, `eventos_live`. Solo lectura, excepto `cierres_diarios` (insert) y `leads.estado` (update vía drag & drop + cierre).
-
-## Mapeo de SQL → SDK
-
-PostgREST no acepta CTEs sueltos, así que cada query del spec se traduce a 1–3 llamadas y composición en cliente. Ver `src/lib/queries.ts` — cada hook lleva el comentario de su query equivalente.
+`.env` ya trae las claves públicas del proyecto Supabase de Mar.
 
 ## Estructura
 
 ```
 src/
-├── App.tsx              Router (3 rutas)
+├── app/
+│   ├── layout.tsx                  Root layout + sidebar
+│   ├── page.tsx                    Inicio · query de prueba a leads
+│   ├── pipeline/page.tsx           Stub (fase 9)
+│   ├── equipo/page.tsx             Stub (fase 10)
+│   └── configuracion/page.tsx      Stub (fase 11)
 ├── components/
-│   ├── Layout.tsx       SWRConfig + topbar
-│   ├── Sidebar.tsx      Navegación + badge dinámico de alertas
-│   ├── TopBar.tsx       ⌘K + indicador "actualizado hace X"
-│   ├── CierresWidget.tsx  Form de pagos + upload de comprobantes
-│   ├── SearchPalette.tsx  ⌘K palette
-│   ├── ui.tsx           Card / Pill / Sparkline / Avatar / Tabs
-│   └── feedback.tsx     Skeleton + ErrorBanner
-├── lib/
-│   ├── supabase.ts      Cliente + helper de día en TZ
-│   ├── types.ts         Tipos espejo de las tablas
-│   ├── queries.ts       Hooks SWR (1 por bloque)
-│   ├── actions.ts       registrarCierre, actualizarEstadoLead, upload
-│   ├── refresh.ts       Reloj global "última actualización"
-│   └── time.ts          useRelativeTime
-└── pages/
-    ├── Inicio.tsx       Bloque A + B + C
-    ├── Pipeline.tsx     Kanban con drag & drop
-    └── Equipo.tsx       Tarjetas + CierresWidget
+│   ├── layout/sidebar.tsx
+│   ├── layout/soon.tsx
+│   └── inicio/leads-count-probe.tsx
+└── lib/
+    ├── utils.ts
+    └── supabase/
+        ├── client.ts               Browser client (anon)
+        ├── server.ts               RSC + Server Actions (anon + cookies)
+        └── admin.ts                Service role · solo server-side
 ```
 
-## Siguientes iteraciones
+## Fase actual
 
-1. **Auth** — Supabase Auth con roles (Mar admin · Eli/Nat · onboarding). Bloquear `/equipo` para que las asesoras solo vean su propia tarjeta + su widget.
-2. **Tendencias** — gráficas de los últimos 30 días para los 3 KPIs principales (usar `cierres_diarios` y `leads` con `GROUP BY date_trunc`).
-3. **Eventos live** — pantalla para editar `eventos_live` (calendario de lives + códigos de descuento).
-4. **Realtime** — sustituir el polling de 30s por canales realtime de Supabase para `alertas` y `cierres_diarios`.
+**Fase 1 del roadmap completa.** Layout funcional, query a Supabase validable visualmente desde `/`. Listo para validar con Libi:
+
+1. Árbol de archivos del proyecto ← este README
+2. Layout funcionando ← `npm run dev` → http://localhost:3000
+3. Query de prueba a Supabase ← tarjeta en Inicio muestra el resultado de `SELECT COUNT(*) FROM leads;`
+
+## Siguiente fase
+
+**Fase 2** — Webhook receptor `/api/webhook/manychat` que recibe el body de ManyChat, lo loguea, detecta audio y devuelve 200. Sin lógica de Sirena todavía. Validación obligatoria con Libi antes de pasar a fase 3.
