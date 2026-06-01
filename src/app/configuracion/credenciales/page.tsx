@@ -25,7 +25,6 @@ export default async function CredencialesPage() {
     openrouter: process.env.OPENROUTER_API_KEY ? "ok" : "warn",
     manychat: process.env.MANYCHAT_API_KEY ? "ok" : "warn",
     openai: process.env.OPENAI_API_KEY ? "ok" : "warn",
-    redis: process.env.REDIS_URL ? "ok" : "warn",
   } as const;
   return <CredencialesPanel statuses={statuses} />;
 }

@@ -90,10 +90,10 @@ export async function runFlowMadre(input: {
     };
   }
 
-  // ── Paso 7: buffer Redis ────────────────────────────────
-  // NOTA: el buffer de 5s con Redis requiere REDIS_URL. Si no está,
-  // procesamos cada mensaje individualmente. ManyChat ya combina
-  // mensajes cercanos antes de mandar el webhook en muchos casos.
+  // ── Paso 7: buffer de 5s ────────────────────────────────
+  // Decisión de Mar: sin buffer. Cada mensaje se procesa individual.
+  // Si se ven respuestas múltiples a mensajes consecutivos, agregamos
+  // el buffer en una iteración futura (Upstash o KV, NO Redis de n8n).
 
   // ── Paso 8: log conversación entrante ───────────────────
   await supabase.from("conversaciones").insert({

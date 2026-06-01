@@ -29,9 +29,9 @@ Dashboard **+ runtime de IA** del taller de joyería plata 925 **Mar de Plata Ta
 ```bash
 npm install
 cp .env.local.example .env.local
-# Rellena .env.local con los 5 secrets:
+# Rellena .env.local con los 4 secrets:
 #   SUPABASE_SERVICE_ROLE_KEY · OPENROUTER_API_KEY · MANYCHAT_API_KEY
-#   OPENAI_API_KEY · REDIS_URL
+#   OPENAI_API_KEY
 npm run dev
 ```
 

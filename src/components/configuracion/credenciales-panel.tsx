@@ -15,7 +15,6 @@ import {
   Brain,
   MessageSquare,
   Mic,
-  Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +26,6 @@ type Statuses = {
   openrouter: Status;
   manychat: Status;
   openai: Status;
-  redis: Status;
 };
 
 type Cred = {
@@ -107,20 +105,6 @@ const CREDS: Cred[] = [
       { label: "OpenAI Platform → API Keys", url: "https://platform.openai.com/api-keys" },
     ],
     notes: "Whisper es muy barato (~$0.006 USD por minuto). Para 50 audios/día son centavos.",
-  },
-  {
-    id: "redis",
-    label: "Redis (buffer 5s)",
-    Icon: Layers,
-    required: false,
-    vars: ["REDIS_URL"],
-    use: "Agrupa mensajes seguidos del mismo cliente. Si una clienta manda 3 mensajes en 4 segundos, Sirena contesta una sola vez al combinar los 3.",
-    fallback: "Sin esto cada mensaje se procesa individualmente. Para tu volumen está bien — si después notas que Sirena contesta múltiples veces a mensajes consecutivos, lo agregamos.",
-    obtain: [
-      { label: "Upstash Redis (gratis hasta 10k commands/día)", url: "https://upstash.com" },
-      { label: "Vercel KV (integrado en tu proyecto)", url: "https://vercel.com/docs/storage/vercel-kv" },
-    ],
-    notes: "El que tienes en n8n es de esa instancia y no se puede reutilizar desde Vercel. Lo más rápido: omitirlo. Lo más completo: Upstash (5 min de setup).",
   },
 ];
 

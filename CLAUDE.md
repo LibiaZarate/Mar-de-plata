@@ -58,9 +58,14 @@ SWR (refresh 30s)
 Recharts (gráficas)
 OpenRouter (LLM gateway)
 ManyChat (WhatsApp delivery)
-Redis (buffer de 5s de mensajes) — o Vercel KV
 OpenAI Whisper (transcripción de audio)
 ```
+
+**Decisión de Mar: SIN Redis.** El buffer de 5s del flujo n8n original
+queda descartado. Cada mensaje del webhook se procesa individualmente.
+Si en producción se ven respuestas múltiples a mensajes consecutivos
+del mismo cliente, evaluar Upstash o Vercel KV — nunca reutilizar la
+instancia de Redis de n8n.
 
 **Principios:**
 - Server Components por default, Client Components solo donde hay interactividad
@@ -89,7 +94,6 @@ SUPABASE_SERVICE_ROLE_KEY=[service role, solo server-side]
 OPENROUTER_API_KEY=[server-side]
 MANYCHAT_API_KEY=[de la credencial httpHeaderAuth "Salvador Manychat"]
 OPENAI_API_KEY=[Whisper transcripción audio]
-REDIS_URL=[opcional, o usar Vercel KV]
 ```
 
 ---
@@ -299,14 +303,7 @@ flowchart TD
     H --> I
     I --> J{Guardrails Críticos}
     J -->|true| GUARD[handoff_directo_guardrail]
-    J -->|false| K[Redis push al buffer]
-    K --> L[Wait 5 segundos]
-    L --> M[Redis get buffer]
-    M --> N{Es último mensaje?}
-    N -->|no| WAIT[Esperar más mensajes]
-    N -->|si| O[Armar texto combinado]
-    O --> P[Redis delete buffer]
-    P --> R[Log Conversación Entrante]
+    J -->|false| R[Log Conversación Entrante]
     R --> S[Consultar Live Activo CTE]
     S --> T[Context Builder obtener_contexto_lead]
     T --> U[Enriquecer Contexto JS]
@@ -368,11 +365,11 @@ return {
 Keywords case-insensitive con OR: `asesora`, `humano`, `persona real`, `profeco`, `fraude`, `denunciar`.
 Si HAY match → llamar `handoff_directo_guardrail` y RETURN early.
 
-### Paso 7 · Buffer Redis (5 segundos)
-- PUSH a lista `mc:inbox:{sessionId}` con el texto
-- WAIT 5s
-- GET lista, si último mensaje == actual → procesar; si no → esperar
-- Concatenar con `\n`, DELETE lista
+### Paso 7 · Buffer 5s ~~Redis~~ — DESCARTADO
+Decisión de Mar: cada mensaje se procesa individual. Si más adelante
+se ven respuestas duplicadas en mensajes consecutivos, evaluar Upstash
+o Vercel KV. **Nunca** reutilizar el Redis interno de n8n (es otra
+instancia y no es accesible desde Vercel).
 
 ### Paso 8 · Log conversación entrante
 INSERT en `conversaciones` con `direccion='entrante'`. NO incluir id, confianza, duracion_ms.
