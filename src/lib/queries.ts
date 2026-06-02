@@ -294,6 +294,8 @@ export const STAGE_LABEL: Record<LeadEstado, string> = {
 };
 
 // ── Playground: historial de conversación de un número ──
+// Va por endpoint server-side (/api/playground/history) para que use
+// service_role y no se topen con RLS que bloquee SELECT de conversaciones.
 export type ConversacionMsg = {
   id: number;
   numero_whatsapp: string;
@@ -307,20 +309,15 @@ export type ConversacionMsg = {
   tool_ejecutada: string | null;
 };
 
+const jsonFetcher = (url: string) =>
+  fetch(url, { cache: "no-store" }).then((r) => r.json());
+
 export function useConversacionHistory(numero: string | null) {
-  return useSWR(
-    numero && numero.length >= 8 ? ["pg:history", numero] : null,
-    async () => {
-      const sb = createClient();
-      const { data, error } = await sb
-        .from("conversaciones")
-        .select("*")
-        .eq("numero_whatsapp", numero)
-        .order("timestamp", { ascending: true })
-        .limit(200);
-      if (error) throw new Error(error.message);
-      return (data ?? []) as ConversacionMsg[];
-    },
+  return useSWR<{ ok: boolean; mensajes: ConversacionMsg[]; error?: string }>(
+    numero && numero.length >= 8
+      ? `/api/playground/history?numero=${encodeURIComponent(numero)}`
+      : null,
+    jsonFetcher,
     { revalidateOnFocus: false, refreshInterval: 0 },
   );
 }
@@ -337,51 +334,9 @@ export type RecentConv = {
 };
 
 export function useRecentConversations() {
-  return useSWR(
-    "pg:recents",
-    async () => {
-      const sb = createClient();
-      const { data: msgs, error } = await sb
-        .from("conversaciones")
-        .select("numero_whatsapp,timestamp,direccion,texto")
-        .order("timestamp", { ascending: false })
-        .limit(300);
-      if (error) throw new Error(error.message);
-
-      const seen = new Map<string, RecentConv>();
-      for (const m of msgs ?? []) {
-        if (!seen.has(m.numero_whatsapp as string)) {
-          seen.set(m.numero_whatsapp as string, {
-            numero: m.numero_whatsapp as string,
-            last: m.timestamp as string,
-            lastText: ((m.texto as string | null) ?? "").slice(0, 80),
-            lastDir: m.direccion as "entrante" | "saliente",
-            nombre: null,
-            etiquetas: [],
-            estado: null,
-          });
-        }
-      }
-      const recents = Array.from(seen.values()).slice(0, 15);
-      if (recents.length === 0) return recents;
-
-      const { data: leads } = await sb
-        .from("leads")
-        .select("numero_whatsapp,nombre,etiquetas,estado")
-        .in("numero_whatsapp", recents.map((r) => r.numero));
-      const leadMap = new Map(
-        (leads ?? []).map((l) => [l.numero_whatsapp as string, l]),
-      );
-      for (const r of recents) {
-        const l = leadMap.get(r.numero);
-        if (l) {
-          r.nombre = (l.nombre as string | null) ?? null;
-          r.etiquetas = ((l.etiquetas as string[] | null) ?? []);
-          r.estado = (l.estado as LeadEstado | null) ?? null;
-        }
-      }
-      return recents;
-    },
+  return useSWR<{ ok: boolean; recents: RecentConv[]; error?: string }>(
+    "/api/playground/recents",
+    jsonFetcher,
     { refreshInterval: 30_000 },
   );
 }

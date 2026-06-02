@@ -80,6 +80,13 @@ function demoAgenteText(input: {
     return `Para esa info te ayuda mejor ${asesora} cuando llegue 💗 ya viene en camino ✨`;
   }
 
+  // Si la clienta preguntó por envíos pero falta origen, pregúntale
+  const mLower = input.mensajeActual.toLowerCase();
+  const preguntaEnvios = /env[íi]o|envios|env[ií]a|mandan|mandas/.test(mLower);
+  if (preguntaEnvios && tool === "responder_texto_simple") {
+    return `¡Claro que sí, linda! 💗 Cuéntame, ¿de dónde nos escribes? Para darte la info exacta del envío ✨`;
+  }
+
   switch (tool) {
     case "enviar_catalogo": {
       const c =
@@ -87,8 +94,16 @@ function demoAgenteText(input: {
         "pandora";
       return `¡Qué padre que te interesa la línea ${c}, linda! ✨ Te paso el catálogo completo. Échale ojo y me dices si algo te llama 💗`;
     }
-    case "enviar_imagen_faq":
+    case "enviar_imagen_faq": {
+      const idImg = Number(
+        input.verificador.accion_recomendada.parametros.id_imagen ?? 0,
+      );
+      if (idImg === 17)
+        return `¡Perfecto, linda! 🌊 Aquí te paso la info de envíos a México 💗`;
+      if (idImg === 18)
+        return `¡Va! 💕 Te paso la info de envíos internacionales ✨`;
       return `Te paso la info que necesitas, linda 💗 ¿Te quedó claro o tienes otra dudita?`;
+    }
     case "invitar_grupo":
       return `¡Qué padre que te animes! 💗 Aquí va el link del grupo de mayoreo. Cuando lo abras manda tu solicitud y Mar la acepta en cuanto la vea ✨`;
     case "handoff_asesora":

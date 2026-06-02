@@ -52,7 +52,7 @@ type Turn = {
 
 const SUGERENCIAS = [
   "hola, quiero ver el catalogo de Pandora",
-  "¿hacen envios a Guadalajara?",
+  "¿hacen envíos?",
   "quiero entrar al grupo de mayoreo",
   "necesito hablar con una asesora real",
   "esto es un fraude, voy a Profeco",
@@ -90,8 +90,11 @@ export function Playground() {
     setTurns([]);
   }, [numero, hydrated]);
 
-  const history = useConversacionHistory(numero);
-  const recents = useRecentConversations();
+  const historyRes = useConversacionHistory(numero);
+  const recentsRes = useRecentConversations();
+  const history = historyRes.data?.mensajes ?? [];
+  const historyError = historyRes.data?.ok === false ? historyRes.data.error : null;
+  const recents = recentsRes.data?.recents ?? [];
 
   async function send() {
     const t = text.trim();
@@ -109,8 +112,8 @@ export function Playground() {
       setTurns((prev) => [...prev, { user: t, result: data }]);
       // refresca historial + recents + métricas globales para que se vea
       // el lead en el pipeline y los KPIs
-      history.mutate();
-      recents.mutate();
+      historyRes.mutate();
+      recentsRes.mutate();
       mutate("kpi:leads_hoy");
       mutate("blocC:embudo");
       mutate("blocB:canales");
@@ -150,19 +153,24 @@ export function Playground() {
       <div className="grid grid-cols-[1fr_300px] gap-4">
         <section className="rounded-lg border border-foreground/15 bg-cream-50 p-5 min-h-[500px] flex flex-col">
           <div className="flex-1 space-y-4 overflow-y-auto max-h-[640px]">
-            {history.isLoading && (
+            {historyRes.isLoading && (
               <div className="text-center text-foreground/45 text-[12px] py-3">
                 Cargando historial…
               </div>
             )}
-            {history.data && history.data.length > 0 && (
+            {historyError && (
+              <div className="border border-rosey-300 bg-rosey-50/50 rounded px-3 py-2 text-[11px] text-rosey-500">
+                No pude cargar el historial: {historyError}
+              </div>
+            )}
+            {history.length > 0 && (
               <>
                 <div className="flex items-center gap-2 text-[10px] tracking-wider uppercase text-foreground/50">
                   <span className="h-px bg-foreground/15 flex-1" />
-                  <span>Conversación anterior · {history.data.length} mensaje{history.data.length === 1 ? "" : "s"}</span>
+                  <span>Conversación anterior · {history.length} mensaje{history.length === 1 ? "" : "s"}</span>
                   <span className="h-px bg-foreground/15 flex-1" />
                 </div>
-                {history.data.map((m) => (
+                {history.map((m) => (
                   <HistoryBubble key={m.id} msg={m} />
                 ))}
                 {turns.length > 0 && (
@@ -174,7 +182,7 @@ export function Playground() {
                 )}
               </>
             )}
-            {history.data?.length === 0 && turns.length === 0 && !pending && (
+            {history.length === 0 && turns.length === 0 && !pending && !historyRes.isLoading && (
               <div className="text-center text-foreground/55 text-[13px] py-8">
                 Sin conversación previa con este número. Escribe abajo para empezar.
               </div>
@@ -226,7 +234,7 @@ export function Playground() {
 
         <aside className="space-y-3">
           <RecentsPanel
-            recents={recents.data ?? []}
+            recents={recents}
             currentNumero={numero}
             onPick={(n) => setNumero(n)}
           />
@@ -272,14 +280,22 @@ export function Playground() {
 // Panel lateral de conversaciones recientes
 // ─────────────────────────────────────────────
 
+type RecentEntry = {
+  numero: string;
+  last: string;
+  lastText: string;
+  lastDir: "entrante" | "saliente";
+  nombre: string | null;
+  etiquetas: string[];
+  estado: string | null;
+};
+
 function RecentsPanel({
   recents,
   currentNumero,
   onPick,
 }: {
-  recents: ReturnType<typeof useRecentConversations>["data"] extends infer T
-    ? Exclude<T, undefined>
-    : never;
+  recents: RecentEntry[];
   currentNumero: string;
   onPick: (numero: string) => void;
 }) {
