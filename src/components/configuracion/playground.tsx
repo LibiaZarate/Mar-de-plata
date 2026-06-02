@@ -384,35 +384,26 @@ function HistoryBubble({ msg }: { msg: ConversacionMsg }) {
       </div>
     );
   }
-  // saliente (Sirena)
+  // saliente (Sirena) — si trae imagen, se renderiza arriba
+  const hasImage = msg.tipo_mensaje === "imagen" && !!msg.media_url;
+  const hasText = !!msg.texto;
   return (
     <div className="flex flex-col items-start">
-      <div className="max-w-[70%] rounded-lg border border-rosey-200 bg-cream-50 px-3 py-2">
-        {msg.tipo_mensaje === "imagen" && msg.media_url && (
-          <div className="space-y-1 mb-1">
-            <div className="inline-flex items-center gap-1.5 text-[11px] text-lila-500">
-              <ImageIcon className="h-3 w-3" />
-              imagen
-            </div>
-            <a
-              href={msg.media_url}
-              target="_blank"
-              rel="noreferrer"
-              className="block text-[11px] font-mono text-lila-500 underline break-all"
-            >
-              {msg.media_url}
-            </a>
-          </div>
-        )}
-        <div className="text-sm whitespace-pre-wrap">
-          {msg.texto || <em className="text-foreground/45">(sin texto)</em>}
+      {hasImage && (
+        <div className="mb-1">
+          <ImagePreview url={msg.media_url!} caption={hasText ? undefined : "imagen"} />
         </div>
-        {msg.tool_ejecutada && (
-          <div className="text-[10px] text-foreground/40 mt-1">
-            tool: {msg.tool_ejecutada}
-          </div>
-        )}
-      </div>
+      )}
+      {hasText && (
+        <div className="max-w-[70%] rounded-lg border border-rosey-200 bg-cream-50 px-3 py-2">
+          <div className="text-sm whitespace-pre-wrap">{msg.texto}</div>
+          {msg.tool_ejecutada && (
+            <div className="text-[10px] text-foreground/40 mt-1">
+              tool: {msg.tool_ejecutada}
+            </div>
+          )}
+        </div>
+      )}
       <span className="text-[9px] text-foreground/40 mt-0.5 ml-1">{time}</span>
     </div>
   );
@@ -552,6 +543,25 @@ function StaggeredBubbles({ messages, demo }: { messages: OutboundMsg[]; demo: b
 }
 
 function OutboundBubble({ msg, demo }: { msg: OutboundMsg; demo?: boolean }) {
+  // Imagen → burbuja con la imagen renderizada (sin el wrapper rectangular
+  // chato del texto). Se ve como un attachment de WhatsApp.
+  if (msg.type === "image" && msg.url) {
+    return (
+      <div className="flex flex-col items-start">
+        {demo && (
+          <div className="inline-flex items-center gap-1 text-[10px] tracking-wider uppercase text-ambr-500 mb-1">
+            <Sparkles className="h-3 w-3" />
+            modo demo (sin OpenRouter)
+          </div>
+        )}
+        <ImagePreview url={msg.url} />
+        <div className="text-[10px] text-foreground/40 mt-1 ml-1">
+          {msg.source === "tool" ? "vía tool" : "vía agente"}
+        </div>
+      </div>
+    );
+  }
+
   const tone = msg.source === "tool" ? "border-lila-300" : "border-rosey-300";
   return (
     <div className="flex">
@@ -562,27 +572,72 @@ function OutboundBubble({ msg, demo }: { msg: OutboundMsg; demo?: boolean }) {
             modo demo (sin OpenRouter)
           </div>
         )}
-        {msg.type === "text" && <div className="text-sm whitespace-pre-wrap">{msg.text}</div>}
-        {msg.type === "image" && (
-          <div className="space-y-1">
-            <div className="inline-flex items-center gap-1.5 text-[11px] text-lila-500">
-              <ImageIcon className="h-3 w-3" />
-              imagen
-            </div>
-            <a
-              href={msg.url}
-              target="_blank"
-              rel="noreferrer"
-              className="block text-[12px] font-mono text-lila-500 underline break-all"
-            >
-              {msg.url}
-            </a>
-          </div>
-        )}
+        <div className="text-sm whitespace-pre-wrap">{msg.text}</div>
         <div className="text-[10px] text-foreground/40 mt-1">
           {msg.source === "tool" ? "vía tool" : "vía agente"}
         </div>
       </div>
     </div>
+  );
+}
+
+// Burbuja-attachment con la imagen renderizada al estilo WhatsApp.
+// Maneja loading, error y click-to-zoom.
+function ImagePreview({ url, caption }: { url: string; caption?: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const [errored, setErrored] = useState(false);
+
+  if (errored) {
+    return (
+      <div className="max-w-[280px] rounded-lg border border-rosey-300 bg-rosey-50/40 px-3 py-2.5">
+        <div className="inline-flex items-center gap-1.5 text-[11px] text-rosey-500 font-medium">
+          <ImageIcon className="h-3 w-3" />
+          no se pudo cargar la imagen
+        </div>
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="block text-[11px] font-mono text-rosey-500 underline break-all mt-1"
+        >
+          {url}
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="block max-w-[280px] rounded-lg overflow-hidden border border-rosey-200 bg-cream-100 group"
+      title="Abrir en tamaño completo"
+    >
+      <div className="relative">
+        {!loaded && (
+          <div className="absolute inset-0 bg-cream-200 animate-pulse flex items-center justify-center min-h-[180px]">
+            <ImageIcon className="h-8 w-8 text-foreground/25" />
+          </div>
+        )}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt={caption ?? "imagen enviada por Sirena"}
+          onLoad={() => setLoaded(true)}
+          onError={() => setErrored(true)}
+          className={cn(
+            "block w-full h-auto transition-opacity",
+            loaded ? "opacity-100" : "opacity-0",
+          )}
+          loading="lazy"
+        />
+      </div>
+      {caption && (
+        <div className="px-3 py-2 text-sm whitespace-pre-wrap border-t border-rosey-200/60">
+          {caption}
+        </div>
+      )}
+    </a>
   );
 }
