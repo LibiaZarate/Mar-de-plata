@@ -64,14 +64,27 @@ export async function GET(req: NextRequest) {
     }
 
     const byOrigen = new Map<string, { leads: number; pagados: number; facturacion: number }>();
+    const byCodigo = new Map<string, { leads: number; pagados: number; facturacion: number }>();
     for (const l of leads) {
       const origen = (l.canal_origen as string | null) ?? "Sin atribución";
       if (!byOrigen.has(origen)) byOrigen.set(origen, { leads: 0, pagados: 0, facturacion: 0 });
       const row = byOrigen.get(origen)!;
       row.leads += 1;
       const fact = facturadoPorLead.get(l.numero_whatsapp as string) ?? 0;
-      if (fact > 0 || l.estado === "pagada") row.pagados += 1;
+      const pagado = fact > 0 || l.estado === "pagada";
+      if (pagado) row.pagados += 1;
       row.facturacion += fact;
+
+      // También agrupamos por anuncio_id para que cada campaña custom
+      // (ad_dia_madres_2026 etc.) tenga sus métricas
+      const codigo = (l.anuncio_id as string | null) ?? null;
+      if (codigo) {
+        if (!byCodigo.has(codigo)) byCodigo.set(codigo, { leads: 0, pagados: 0, facturacion: 0 });
+        const rowC = byCodigo.get(codigo)!;
+        rowC.leads += 1;
+        if (pagado) rowC.pagados += 1;
+        rowC.facturacion += fact;
+      }
     }
 
     const porOrigen = Array.from(byOrigen.entries())
@@ -82,11 +95,20 @@ export async function GET(req: NextRequest) {
       }))
       .sort((a, b) => b.leads - a.leads);
 
+    const porCodigo = Array.from(byCodigo.entries())
+      .map(([codigo, m]) => ({
+        codigo,
+        ...m,
+        conversion_pct: m.leads === 0 ? 0 : (m.pagados / m.leads) * 100,
+      }))
+      .sort((a, b) => b.leads - a.leads);
+
     return NextResponse.json({
       ok: true,
       days,
       whatsappNegocio,
       porOrigen,
+      porCodigo,
       totalLeads: leads.length,
     });
   } catch (e) {

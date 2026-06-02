@@ -134,11 +134,14 @@ export function detectarOrigenDelMensaje(texto: string): {
 }
 
 function mapearCodigoACanal(codigo: string): string {
+  // Cualquier código que empiece con "ad_" o "meta_" → Meta (los anuncios
+  // de campañas custom de Mar caen aquí, ej. ad_dia_madres_2026)
+  if (codigo.startsWith("ad_") || codigo.startsWith("meta_") || codigo === "anuncio")
+    return "Meta";
   if (codigo.startsWith("ig") || codigo.includes("instagram")) return "Instagram";
   if (codigo.startsWith("fb") || codigo.includes("facebook")) return "Facebook";
   if (codigo.startsWith("tt") || codigo.includes("tiktok")) return "TikTok";
   if (codigo.startsWith("web") || codigo.includes("sitio")) return "Web";
-  if (codigo.includes("ad") || codigo.includes("anuncio") || codigo.includes("meta")) return "Meta";
   if (codigo.includes("tarjeta") || codigo.includes("card")) return "Tarjeta";
   if (codigo.includes("grupo") || codigo.includes("wsp_group")) return "Grupo";
   if (codigo.includes("recomend") || codigo.includes("referi")) return "Recurrente";
