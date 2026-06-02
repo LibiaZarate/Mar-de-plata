@@ -1,11 +1,16 @@
 // Endpoint único de la pantalla Inicio: Bloque A (KPIs) + Bloque B
 // (operativos) + Bloque C (embudo). Usa service_role para saltar RLS.
+// Soporta query param ?range=hoy|7d|30d|total.
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+type Range = "hoy" | "7d" | "30d" | "total";
+type Bounds = { start: string | null; end: string };
 
 function dayBoundsMx(offsetDays = 0): { start: string; end: string } {
   const now = new Date();
@@ -22,95 +27,164 @@ function dayBoundsMx(offsetDays = 0): { start: string; end: string } {
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
-export async function GET() {
+function rangeBounds(range: Range): {
+  current: Bounds;
+  previous: Bounds;
+  days: number;
+} {
+  if (range === "total") {
+    const end = new Date().toISOString();
+    return { current: { start: null, end }, previous: { start: null, end }, days: 0 };
+  }
+  if (range === "hoy") {
+    return { current: dayBoundsMx(0), previous: dayBoundsMx(-1), days: 1 };
+  }
+  const days = range === "7d" ? 7 : 30;
+  return {
+    current: { start: dayBoundsMx(-(days - 1)).start, end: dayBoundsMx(0).end },
+    previous: { start: dayBoundsMx(-(days * 2 - 1)).start, end: dayBoundsMx(-days).start },
+    days,
+  };
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+async function countByDate(
+  sb: SupabaseClient,
+  table: string,
+  col: string,
+  bounds: Bounds,
+): Promise<number> {
+  let q: any = sb.from(table).select("*", { count: "exact", head: true });
+  if (bounds.start) q = q.gte(col, bounds.start).lt(col, bounds.end);
+  const { count } = await q;
+  return count ?? 0;
+}
+
+async function selectByDate(
+  sb: SupabaseClient,
+  table: string,
+  cols: string,
+  col: string,
+  bounds: Bounds,
+  extra?: (q: any) => any,
+): Promise<Record<string, unknown>[]> {
+  let q: any = sb.from(table).select(cols);
+  if (extra) q = extra(q);
+  if (bounds.start) q = q.gte(col, bounds.start).lt(col, bounds.end);
+  const { data } = await q;
+  return (data ?? []) as Record<string, unknown>[];
+}
+
+export async function GET(req: NextRequest) {
+  const range = (req.nextUrl.searchParams.get("range") ?? "hoy") as Range;
+  if (!["hoy", "7d", "30d", "total"].includes(range)) {
+    return NextResponse.json(
+      { ok: false, error: `range inválido: ${range}` },
+      { status: 400 },
+    );
+  }
+  const { current, previous, days } = rangeBounds(range);
+
   try {
     const sb = createAdminClient();
-    const hoy = dayBoundsMx(0);
-    const ayer = dayBoundsMx(-1);
 
     const [
-      leadsHoyRes,
-      leadsAyerRes,
-      leadsHoyList,
+      hCount,
+      aCount,
+      leadsCurList,
       handoffsList,
-      cierresHoy,
+      cierresCur,
       canalesData,
-      alertasCount,
-      todosHoy,
+      alertasCountObj,
       conversacionesEnEstado,
       requierenHandoff,
     ] = await Promise.all([
-      sb.from("leads").select("*", { count: "exact", head: true })
-        .gte("primer_contacto", hoy.start).lt("primer_contacto", hoy.end),
-      sb.from("leads").select("*", { count: "exact", head: true })
-        .gte("primer_contacto", ayer.start).lt("primer_contacto", ayer.end),
-      sb.from("leads").select("numero_whatsapp,estado,canal_origen,primer_contacto")
-        .gte("primer_contacto", hoy.start).lt("primer_contacto", hoy.end),
-      sb.from("alertas").select("numero_whatsapp")
-        .in("tipo", ["handoff_normal", "handoff_urgente", "guardrail_critico"])
-        .gte("created_at", hoy.start).lt("created_at", hoy.end),
-      sb.from("cierres_diarios").select("monto")
-        .gte("fecha_cierre", hoy.start).lt("fecha_cierre", hoy.end),
-      sb.from("leads").select("canal_origen")
-        .gte("primer_contacto", hoy.start).lt("primer_contacto", hoy.end),
+      countByDate(sb, "leads", "primer_contacto", current),
+      countByDate(sb, "leads", "primer_contacto", previous),
+      selectByDate(sb, "leads", "numero_whatsapp,estado,canal_origen,primer_contacto", "primer_contacto", current),
+      selectByDate(sb, "alertas", "numero_whatsapp", "created_at", current, (q) =>
+        q.in("tipo", ["handoff_normal", "handoff_urgente", "guardrail_critico"]),
+      ),
+      selectByDate(sb, "cierres_diarios", "monto", "fecha_cierre", current),
+      selectByDate(sb, "leads", "canal_origen", "primer_contacto", current),
       sb.from("alertas").select("*", { count: "exact", head: true })
         .in("estado", ["activa", "vista"]),
-      sb.from("leads").select("numero_whatsapp,estado,primer_contacto")
-        .gte("primer_contacto", hoy.start).lt("primer_contacto", hoy.end),
-      sb.from("estado_conversacion_actual").select("numero_whatsapp,rama_activa,inicio_conversacion")
-        .not("rama_activa", "is", null)
-        .gte("inicio_conversacion", hoy.start).lt("inicio_conversacion", hoy.end),
-      sb.from("estado_conversacion_actual").select("numero_whatsapp,requiere_handoff,inicio_conversacion")
-        .eq("requiere_handoff", true)
-        .gte("inicio_conversacion", hoy.start).lt("inicio_conversacion", hoy.end),
+      selectByDate(
+        sb,
+        "estado_conversacion_actual",
+        "numero_whatsapp,rama_activa,inicio_conversacion",
+        "inicio_conversacion",
+        current,
+        (q) => q.not("rama_activa", "is", null),
+      ),
+      selectByDate(
+        sb,
+        "estado_conversacion_actual",
+        "numero_whatsapp,requiere_handoff,inicio_conversacion",
+        "inicio_conversacion",
+        current,
+        (q) => q.eq("requiere_handoff", true),
+      ),
     ]);
 
-    // KPI 1
-    const h = leadsHoyRes.count ?? 0;
-    const a = leadsAyerRes.count ?? 0;
-    const delta = a === 0 ? (h === 0 ? 0 : 100) : Math.round(((h - a) / a) * 100);
+    // KPI 1 leads
+    const delta =
+      aCount === 0 ? (hCount === 0 ? 0 : 100) : Math.round(((hCount - aCount) / aCount) * 100);
 
-    // KPI 2
-    const total = (leadsHoyList.data ?? []).length;
-    const handoffSet = new Set((handoffsList.data ?? []).map((x) => x.numero_whatsapp));
-    const con = (leadsHoyList.data ?? []).filter((x) => handoffSet.has(x.numero_whatsapp)).length;
-    const efectividad = total === 0 ? 0 : ((total - con) / total) * 100;
+    // KPI 2 efectividad
+    const totalLeads = leadsCurList.length;
+    const handoffSet = new Set(handoffsList.map((x) => x.numero_whatsapp as string));
+    const conHandoff = leadsCurList.filter((x) =>
+      handoffSet.has(x.numero_whatsapp as string),
+    ).length;
+    const efectividad =
+      totalLeads === 0 ? 0 : ((totalLeads - conHandoff) / totalLeads) * 100;
 
-    // KPI 3 (facturación)
-    const pedidos = (cierresHoy.data ?? []).length;
-    const facturacion = (cierresHoy.data ?? []).reduce((s, r) => s + Number(r.monto || 0), 0);
+    // KPI 3 facturación
+    const pedidos = cierresCur.length;
+    const facturacion = cierresCur.reduce((s, r) => s + Number(r.monto || 0), 0);
     const ticket = pedidos === 0 ? 0 : facturacion / pedidos;
 
     // Canales
     const counts = new Map<string, number>();
-    for (const row of canalesData.data ?? []) {
-      const c = (row.canal_origen as string) ?? "—";
+    for (const row of canalesData) {
+      const c = (row.canal_origen as string | null) ?? "—";
       counts.set(c, (counts.get(c) ?? 0) + 1);
     }
     const canales = Array.from(counts.entries())
       .map(([canal, total]) => ({ canal, total }))
       .sort((a, b) => b.total - a.total);
 
-    // Embudo (Bloque C)
-    const ll = (todosHoy.data ?? []) as { numero_whatsapp: string; estado: string }[];
-    const set = new Set(ll.map((x) => x.numero_whatsapp));
+    // Embudo
+    const set = new Set(leadsCurList.map((x) => x.numero_whatsapp as string));
     const etapas = [
-      { key: "entro", label: "Entró", count: ll.length },
+      { key: "entro", label: "Entró", count: leadsCurList.length },
       {
         key: "en_conversacion",
         label: "En conversación",
-        count: (conversacionesEnEstado.data ?? []).filter((x) =>
-          set.has(x.numero_whatsapp),
-        ).length,
+        count: conversacionesEnEstado.filter((x) => set.has(x.numero_whatsapp as string)).length,
       },
-      { key: "calificada", label: "Calificada", count: ll.filter((l) => l.estado === "calificada").length },
+      {
+        key: "calificada",
+        label: "Calificada",
+        count: leadsCurList.filter((l) => l.estado === "calificada").length,
+      },
       {
         key: "equipo",
         label: "En manos del equipo",
-        count: (requierenHandoff.data ?? []).filter((x) => set.has(x.numero_whatsapp)).length,
+        count: requierenHandoff.filter((x) => set.has(x.numero_whatsapp as string)).length,
       },
-      { key: "esperando_pago", label: "Esperando pago", count: ll.filter((l) => l.estado === "esperando_pago").length },
-      { key: "pagada", label: "Pagada", count: ll.filter((l) => l.estado === "pagada").length },
+      {
+        key: "esperando_pago",
+        label: "Esperando pago",
+        count: leadsCurList.filter((l) => l.estado === "esperando_pago").length,
+      },
+      {
+        key: "pagada",
+        label: "Pagada",
+        count: leadsCurList.filter((l) => l.estado === "pagada").length,
+      },
     ];
     let cuello: { from: string; to: string; fuga_pp: number } | null = null;
     const totalE = etapas[0].count;
@@ -126,11 +200,13 @@ export async function GET() {
 
     return NextResponse.json({
       ok: true,
-      leadsHoyKpi: { hoy: h, ayer: a, delta },
-      efectividad: { pct: efectividad, total, con },
+      range,
+      days,
+      leadsHoyKpi: { hoy: hCount, ayer: aCount, delta },
+      efectividad: { pct: efectividad, total: totalLeads, con: conHandoff },
       facturacion: { pedidos, facturacion, ticket },
       canales,
-      alertasCount: alertasCount.count ?? 0,
+      alertasCount: alertasCountObj.count ?? 0,
       embudo: { etapas, cuello, conversion },
     });
   } catch (e) {

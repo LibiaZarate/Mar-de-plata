@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   useAlertasActivas,
   useEfectividadKpi,
@@ -7,16 +8,40 @@ import {
   useFacturacionKpi,
   useLeadsHoyKpi,
   useLeadsPorCanal,
+  type DashboardRange,
 } from "@/lib/queries";
 import { cn, formatMxn } from "@/lib/utils";
 
+const RANGE_LABELS: Record<DashboardRange, string> = {
+  hoy: "Hoy",
+  "7d": "7 días",
+  "30d": "30 días",
+  total: "Todo",
+};
+
+const RANGE_NOUN: Record<DashboardRange, string> = {
+  hoy: "hoy",
+  "7d": "en los últimos 7 días",
+  "30d": "en los últimos 30 días",
+  total: "en total",
+};
+
+const RANGE_VS: Record<DashboardRange, string> = {
+  hoy: "vs ayer",
+  "7d": "vs 7 días previos",
+  "30d": "vs 30 días previos",
+  total: "(acumulado)",
+};
+
 export function Inicio() {
+  const [range, setRange] = useState<DashboardRange>("hoy");
+
   return (
     <div className="px-10 py-6 space-y-6 bg-background">
-      <TopHeader />
-      <BloqueA />
-      <BloqueB />
-      <BloqueC />
+      <TopHeader range={range} onRangeChange={setRange} />
+      <BloqueA range={range} />
+      <BloqueB range={range} />
+      <BloqueC range={range} />
     </div>
   );
 }
@@ -35,7 +60,13 @@ function Sparkle({ className = "" }: { className?: string }) {
   );
 }
 
-function TopHeader() {
+function TopHeader({
+  range,
+  onRangeChange,
+}: {
+  range: DashboardRange;
+  onRangeChange: (r: DashboardRange) => void;
+}) {
   const hour = new Date().getHours();
   const greet = hour < 12 ? "Buenos días" : hour < 19 ? "Buenas tardes" : "Buenas noches";
   const today = new Date()
@@ -51,18 +82,12 @@ function TopHeader() {
     <header className="flex items-start justify-between gap-6">
       <div>
         <div className="label-xs">Inicio · vista general</div>
-        <h1 className="font-serif-display text-[64px] leading-[1.05] mt-2">
-          {greet}, Mar
-        </h1>
+        <h1 className="font-serif-display text-[64px] leading-[1.05] mt-2">{greet}, Mar</h1>
         <div className="text-[13px] text-foreground/60 mt-2">{today}</div>
       </div>
       <div className="flex items-center gap-3 mt-3">
         <Sparkle className="mr-2" />
-        <button className="btn-outline">
-          <span className="font-mono text-[11px] tracking-tight">⌘K</span>
-          <span>Buscar</span>
-        </button>
-        <button className="btn-rose">Registrar pedido</button>
+        <RangeSelector value={range} onChange={onRangeChange} />
         <div className="relative">
           <div className="w-9 h-9 rounded-full border border-foreground/30 flex items-center justify-center bg-cream-50">
             <div className="w-5 h-5 rounded-full bg-rosey-200" />
@@ -74,21 +99,54 @@ function TopHeader() {
   );
 }
 
-function BloqueA() {
-  const leads = useLeadsHoyKpi();
-  const ef = useEfectividadKpi();
-  const fac = useFacturacionKpi();
+function RangeSelector({
+  value,
+  onChange,
+}: {
+  value: DashboardRange;
+  onChange: (v: DashboardRange) => void;
+}) {
+  const opts: DashboardRange[] = ["hoy", "7d", "30d", "total"];
+  return (
+    <div className="inline-flex gap-1 border border-foreground/30 rounded-md p-0.5 bg-cream-50">
+      {opts.map((o) => (
+        <button
+          key={o}
+          onClick={() => onChange(o)}
+          className={cn(
+            "px-3 py-1 text-sm rounded-[5px] transition-colors",
+            value === o
+              ? "bg-rosey-100 text-foreground border border-rosey-300"
+              : "text-foreground/65 hover:bg-cream-100",
+          )}
+        >
+          {RANGE_LABELS[o]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function BloqueA({ range }: { range: DashboardRange }) {
+  const leads = useLeadsHoyKpi(range);
+  const ef = useEfectividadKpi(range);
+  const fac = useFacturacionKpi(range);
+  const ventana = RANGE_NOUN[range];
 
   return (
     <section>
-      <div className="label-xs mb-3">Bloque A · pulso del día</div>
+      <div className="label-xs mb-3">
+        Bloque A · pulso {ventana}
+      </div>
       <div className="grid grid-cols-3 gap-4">
         <CardKpi
-          label="Leads hoy"
+          label={`Leads ${ventana}`}
           value={leads.data ? String(leads.data.hoy) : "—"}
           sub={
             leads.data
-              ? `${leads.data.delta >= 0 ? "↑" : "↓"} ${Math.abs(leads.data.delta)}% vs ayer (${leads.data.ayer})`
+              ? range === "total"
+                ? `total acumulado (${leads.data.hoy} leads)`
+                : `${leads.data.delta >= 0 ? "↑" : "↓"} ${Math.abs(leads.data.delta)}% ${RANGE_VS[range]} (${leads.data.ayer})`
               : "—"
           }
           tone={leads.data && leads.data.delta >= 0 ? "up" : "down"}
@@ -98,13 +156,17 @@ function BloqueA() {
         <CardKpi
           label="Efectividad del bot"
           value={ef.data ? `${ef.data.pct.toFixed(1)}%` : "—"}
-          sub={ef.data ? `${ef.data.con} de ${ef.data.total} pidieron humano` : "—"}
+          sub={
+            ef.data
+              ? `${ef.data.con} de ${ef.data.total} pidieron humano`
+              : "—"
+          }
           tone="neutral"
           loading={ef.isLoading}
           error={ef.error?.message}
         />
         <CardKpi
-          label="Facturación hoy"
+          label={`Facturación ${ventana}`}
           value={fac.data ? `${formatMxn(fac.data.facturacion)}` : "—"}
           valueUnit="MXN"
           sub={
@@ -131,30 +193,29 @@ const CANAL_COLOR: Record<string, string> = {
   Organico: "bg-foreground/40",
 };
 
-function BloqueB() {
-  const fac = useFacturacionKpi();
-  const canales = useLeadsPorCanal();
-  const alertas = useAlertasActivas();
+function BloqueB({ range }: { range: DashboardRange }) {
+  const fac = useFacturacionKpi(range);
+  const canales = useLeadsPorCanal(range);
+  const alertas = useAlertasActivas(range);
+  const ventana = RANGE_NOUN[range];
 
   return (
     <section>
-      <div className="label-xs mb-3">Bloque B · operación de hoy</div>
+      <div className="label-xs mb-3">Bloque B · operación {ventana}</div>
       <div className="grid grid-cols-4 gap-4">
-        <Card title="Facturación hoy">
+        <Card title={`Facturación ${ventana}`}>
           <div className="font-serif-display text-[42px] leading-none">
             {formatMxn(fac.data?.facturacion ?? 0)}
             <span className="text-sm text-foreground/60 ml-2 font-sans">MXN</span>
           </div>
           <div className="mt-3 text-[12px] text-sage-500">
-            ↑ 18% vs prom. 7 días · ticket prom. {formatMxn(fac.data?.ticket ?? 0)}
+            ticket prom. {formatMxn(fac.data?.ticket ?? 0)}
           </div>
         </Card>
 
-        <Card title="Pedidos cerrados hoy">
+        <Card title={`Pedidos cerrados ${ventana}`}>
           <div className="flex items-baseline gap-2">
-            <div className="font-serif-display text-[42px] leading-none">
-              {fac.data?.pedidos ?? 0}
-            </div>
+            <div className="font-serif-display text-[42px] leading-none">{fac.data?.pedidos ?? 0}</div>
             <div className="text-sm text-foreground/60">tickets</div>
           </div>
           <div className="mt-3 text-[12px] text-foreground/60">
@@ -165,7 +226,7 @@ function BloqueB() {
         <Card title="Leads por canal">
           {(canales.data ?? []).length === 0 ? (
             <div className="text-[12px] text-foreground/55 italic mt-2">
-              Aún no entran leads hoy.
+              No hay leads {ventana}.
             </div>
           ) : (
             <>
@@ -186,9 +247,7 @@ function BloqueB() {
 
         <Card title="En tu cancha ahora" highlight>
           <div className="flex items-start justify-between">
-            <div className="font-serif-display text-[42px] leading-none">
-              {alertas.data ?? 0}
-            </div>
+            <div className="font-serif-display text-[42px] leading-none">{alertas.data ?? 0}</div>
             <div className="text-right">
               <div className="font-italic-serif text-rosey-500 text-sm leading-tight">
                 requiere<br />humano →
@@ -196,7 +255,7 @@ function BloqueB() {
             </div>
           </div>
           <div className="mt-3 text-[12px] text-foreground/80 leading-snug">
-            alertas pendientes
+            alertas pendientes (no se filtra por rango)
           </div>
         </Card>
       </div>
@@ -213,17 +272,18 @@ const ETAPA_COLOR = [
   "bg-sage-200",
 ];
 
-function BloqueC() {
-  const e = useEmbudoDia();
-  const fac = useFacturacionKpi();
+function BloqueC({ range }: { range: DashboardRange }) {
+  const e = useEmbudoDia(range);
+  const fac = useFacturacionKpi(range);
   const etapas = e.data?.etapas ?? [];
   const total = etapas[0]?.count ?? 0;
   const cuello = e.data?.cuello;
+  const ventana = RANGE_NOUN[range];
 
   return (
     <section>
       <div className="flex items-end justify-between mb-3">
-        <div className="label-xs">Bloque C · embudo del día</div>
+        <div className="label-xs">Bloque C · embudo {ventana}</div>
         {cuello && total > 0 && (
           <span className="pill-ambr">
             Cuello de botella · {cuello.from} → {cuello.to}
@@ -236,6 +296,15 @@ function BloqueC() {
           <div className="h-40 rounded bg-cream-200 animate-pulse" />
         ) : e.error ? (
           <ErrorLine msg={e.error.message} />
+        ) : total === 0 ? (
+          <div className="text-center py-10 space-y-2">
+            <div className="font-italic-serif text-rosey-400 text-xl">
+              No entran leads {ventana}.
+            </div>
+            <div className="text-[12px] text-foreground/55">
+              Cuando Sirena reciba un mensaje (real o de prueba), aparece aquí. El pipeline acumula sin importar el rango.
+            </div>
+          </div>
         ) : (
           <>
             <ul className="space-y-1.5">
@@ -279,7 +348,7 @@ function BloqueC() {
 
             <div className="grid grid-cols-3 gap-3 mt-6 pt-4 border-t border-foreground/10">
               <Mini label="Conversión total" value={`${(e.data?.conversion ?? 0).toFixed(1)}%`} />
-              <Mini label="Facturación de hoy" value={formatMxn(fac.data?.facturacion ?? 0)} />
+              <Mini label={`Facturación ${ventana}`} value={formatMxn(fac.data?.facturacion ?? 0)} />
               <Mini label="Ticket promedio" value={formatMxn(fac.data?.ticket ?? 0)} />
             </div>
           </>
@@ -334,9 +403,7 @@ function CardKpi({
         <>
           <div className="font-serif-display text-[56px] leading-[1] flex items-baseline gap-2">
             {value}
-            {valueUnit && (
-              <span className="text-base text-foreground/55 font-sans">{valueUnit}</span>
-            )}
+            {valueUnit && <span className="text-base text-foreground/55 font-sans">{valueUnit}</span>}
           </div>
           <div className={cn("mt-3 text-[12px] font-medium", subColor)}>{sub}</div>
         </>

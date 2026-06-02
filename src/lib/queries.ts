@@ -19,9 +19,13 @@ const fetcher = (url: string) =>
   fetch(url, { cache: "no-store" }).then((r) => r.json());
 
 // ── Tipo agregado del endpoint /api/dashboard/inicio ──
+export type DashboardRange = "hoy" | "7d" | "30d" | "total";
+
 type InicioResponse = {
   ok: boolean;
   error?: string;
+  range: DashboardRange;
+  days: number;
   leadsHoyKpi: { hoy: number; ayer: number; delta: number };
   efectividad: { pct: number; total: number; con: number };
   facturacion: { pedidos: number; facturacion: number; ticket: number };
@@ -34,54 +38,58 @@ type InicioResponse = {
   };
 };
 
-function useInicio() {
-  return useSWR<InicioResponse>("/api/dashboard/inicio", fetcher, POLL);
+function useInicio(range: DashboardRange = "hoy") {
+  return useSWR<InicioResponse>(
+    `/api/dashboard/inicio?range=${range}`,
+    fetcher,
+    POLL,
+  );
 }
 
 // Hooks de "Bloque A · B · C". Comparten una sola llamada al endpoint
 // agregado para no machacar Supabase con 8 queries por refresh.
-export function useLeadsHoyKpi() {
-  const { data, error, isLoading } = useInicio();
+export function useLeadsHoyKpi(range: DashboardRange = "hoy") {
+  const { data, error, isLoading } = useInicio(range);
   return {
     data: data?.ok ? data.leadsHoyKpi : undefined,
     error: error ?? (data && !data.ok ? new Error(data.error) : null),
     isLoading,
   };
 }
-export function useEfectividadKpi() {
-  const { data, error, isLoading } = useInicio();
+export function useEfectividadKpi(range: DashboardRange = "hoy") {
+  const { data, error, isLoading } = useInicio(range);
   return {
     data: data?.ok ? data.efectividad : undefined,
     error: error ?? (data && !data.ok ? new Error(data.error) : null),
     isLoading,
   };
 }
-export function useFacturacionKpi() {
-  const { data, error, isLoading } = useInicio();
+export function useFacturacionKpi(range: DashboardRange = "hoy") {
+  const { data, error, isLoading } = useInicio(range);
   return {
     data: data?.ok ? data.facturacion : undefined,
     error: error ?? (data && !data.ok ? new Error(data.error) : null),
     isLoading,
   };
 }
-export function useLeadsPorCanal() {
-  const { data, error, isLoading } = useInicio();
+export function useLeadsPorCanal(range: DashboardRange = "hoy") {
+  const { data, error, isLoading } = useInicio(range);
   return {
     data: data?.ok ? data.canales : undefined,
     error: error ?? (data && !data.ok ? new Error(data.error) : null),
     isLoading,
   };
 }
-export function useAlertasActivas() {
-  const { data, error, isLoading } = useInicio();
+export function useAlertasActivas(range: DashboardRange = "hoy") {
+  const { data, error, isLoading } = useInicio(range);
   return {
     data: data?.ok ? data.alertasCount : undefined,
     error: error ?? (data && !data.ok ? new Error(data.error) : null),
     isLoading,
   };
 }
-export function useEmbudoDia() {
-  const { data, error, isLoading } = useInicio();
+export function useEmbudoDia(range: DashboardRange = "hoy") {
+  const { data, error, isLoading } = useInicio(range);
   return {
     data: data?.ok ? data.embudo : undefined,
     error: error ?? (data && !data.ok ? new Error(data.error) : null),
