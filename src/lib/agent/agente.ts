@@ -22,7 +22,14 @@ export async function runAgenteMadre(input: {
   yaPagoDeposito: boolean;
 }): Promise<AgenteOutput> {
   if (isDemoMode()) {
-    return { texto: demoAgenteText(input), _demo: true };
+    return {
+      texto: demoAgenteText({
+        verificador: input.verificador,
+        mensajeActual: input.mensajeActual,
+        contextoLead: input.contextoLead,
+      }),
+      _demo: true,
+    };
   }
 
   const userMsg = buildAgenteUserMessage({
@@ -50,8 +57,29 @@ export async function runAgenteMadre(input: {
 function demoAgenteText(input: {
   verificador: VerificadorOutput;
   mensajeActual: string;
+  contextoLead: Record<string, unknown>;
 }): string {
   const tool = input.verificador.accion_recomendada.tool_principal;
+  const estado = input.contextoLead.estado_actual as Record<string, unknown> | undefined;
+  const yaEnHandoff =
+    !!estado && (estado.rama_activa === "handoff" || estado.requiere_handoff === true);
+  const asesora =
+    ((input.contextoLead.lead as Record<string, unknown> | undefined)
+      ?.asesora_asignada as string) || "tu asesora";
+
+  // Si ya hay handoff activo, NO repetir el "te paso con X" ni disparar
+  // tools. Acompañar mientras espera.
+  if (yaEnHandoff) {
+    const m = input.mensajeActual.toLowerCase().trim();
+    if (/^(hola|holaa|buenas|buenos|ey|hey)/.test(m)) {
+      return `¡Hola linda! ${asesora} ya viene en un momentito 💗 ¿Te ayudo con algo mientras?`;
+    }
+    if (/cuanto|cuánto|tardas|tarda|espera|esperar/.test(m)) {
+      return `Ya casi llega ${asesora}, querida 💕 No tarda, te lo prometo.`;
+    }
+    return `Para esa info te ayuda mejor ${asesora} cuando llegue 💗 ya viene en camino ✨`;
+  }
+
   switch (tool) {
     case "enviar_catalogo": {
       const c =

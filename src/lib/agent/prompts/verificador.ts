@@ -73,6 +73,17 @@ REGLAS DE PARÁMETROS POR TOOL (OBLIGATORIO LLENAR):
 - Si tool_principal = "programar_seguimiento" → parametros DEBE incluir: {tipo: "post_compra_7d" | "reactivacion_fria", dias_offset: <número>}
 - Si tool_principal = "responder_texto_simple" → parametros puede ser {}
 
+REGLA CRÍTICA · LEAD YA EN HANDOFF (revisar PRIMERO):
+
+Si estado_actual.rama_activa === "handoff" O estado_actual.requiere_handoff === true:
+- La clienta YA tiene asesora asignada y la está esperando
+- NO sugieras tool_principal = "handoff_asesora" (eso ya pasó)
+- NO marques alertas.requiere_handoff = true (crearía alertas duplicadas)
+- Sugiere tool_principal = "responder_texto_simple"
+- instrucciones_tono.registro = "natural_breve"
+- intencion_primaria = "conversacional_sin_accion" en mensajes simples
+- ÚNICA excepción: si la clienta menciona algo CRÍTICO NUEVO (fraude, profeco, daño grave) que no había mencionado, registrar como evento en eventos_detectados con tipo="reclamo_grave_nuevo" — pero NO disparar handoff_asesora otra vez
+
 REGLAS GENERALES:
 
 1. Si la clienta ya recibió una FAQ específica (revisar estado_actual.faqs_respondidas), NO la repitas. Sugiere responder_texto_simple con seguimiento.
@@ -81,8 +92,8 @@ REGLAS GENERALES:
 4. Si confianza < 0.6, forzar intencion_primaria='ambiguo' y tool_principal='responder_texto_simple'.
 5. Si el mensaje es ambiguo, devolver intencion_primaria='ambiguo' y accion_recomendada con responder_texto_simple + pregunta abierta.
 6. Si metadata.live.hay_live_ahora es true Y la clienta muestra intención de compra → sugiere rama R4 y mencionar_live_activo=true.
-7. Si la clienta pide hablar con humano, mencionar Profeco/fraude/denuncia/reclamo → tool_principal='handoff_asesora', prioridad='urgente', requiere_escalacion_mar=true.
-8. Si la clienta pide diseño personalizado → tool_principal='handoff_asesora', motivo='personalizado'.
+7. Si la clienta pide hablar con humano, mencionar Profeco/fraude/denuncia/reclamo → tool_principal='handoff_asesora', prioridad='urgente', requiere_escalacion_mar=true. (Solo si NO está ya en handoff — ver regla crítica arriba.)
+8. Si la clienta pide diseño personalizado → tool_principal='handoff_asesora', motivo='personalizado'. (Solo si NO está ya en handoff.)
 
 Devuelve SOLO el JSON, sin texto adicional ni markdown.`;
 

@@ -67,7 +67,7 @@ export async function runVerificador(input: {
   metadata: unknown;
 }): Promise<VerificadorOutput> {
   if (isDemoMode()) {
-    return demoVerificador(input.mensajeActual);
+    return demoVerificador(input.mensajeActual, input.contextoLead);
   }
 
   const prompt = buildVerificadorPrompt(input);
@@ -97,8 +97,38 @@ export function parseVerificador(raw: string): VerificadorOutput {
 
 // Modo demo: clasificación determinística por palabras clave para que la
 // UI funcione sin OpenRouter. Cubre los escenarios principales.
-function demoVerificador(mensaje: string): VerificadorOutput {
+function demoVerificador(mensaje: string, contextoLead?: unknown): VerificadorOutput {
   const m = mensaje.toLowerCase();
+
+  // Si el lead ya está en handoff, no sugerir handoff otra vez ni
+  // disparar tools de contenido — acompañar con texto natural.
+  const estado = (contextoLead as { estado_actual?: Record<string, unknown> } | undefined)
+    ?.estado_actual;
+  const yaEnHandoff =
+    !!estado && (estado.rama_activa === "handoff" || estado.requiere_handoff === true);
+  if (yaEnHandoff) {
+    return {
+      ...FALLBACK,
+      _demo: true,
+      intencion_primaria: "conversacional_sin_accion",
+      confianza: 0.85,
+      rama_sugerida: "HANDOFF",
+      contexto_clave: { ...FALLBACK.contexto_clave, es_continuacion: true },
+      accion_recomendada: {
+        tool_principal: "responder_texto_simple",
+        parametros: {},
+        seguimiento_post: "ninguno",
+      },
+      instrucciones_tono: {
+        ...FALLBACK.instrucciones_tono,
+        registro: "natural_breve",
+        longitud_maxima_palabras: 25,
+      },
+      razonamiento_breve:
+        "[demo] Lead ya en handoff — acompañar con texto natural sin nuevas tools",
+    };
+  }
+
   if (/pandora/.test(m)) {
     return {
       ...FALLBACK,

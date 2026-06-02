@@ -171,12 +171,19 @@ export async function runFlowMadre(input: {
   });
 
   // ── Ejecutar la tool sugerida (si aplica) ───────────────
+  const estadoActual = (contexto.estado_actual ?? null) as Record<string, unknown> | null;
+  const yaEnHandoff =
+    !!estadoActual &&
+    (estadoActual.rama_activa === "handoff" ||
+      estadoActual.requiere_handoff === true);
+
   const toolResult = await executeTool({
     verificador,
     numero,
     subscriberId: input.cleaned.subscriberId,
     kaizenSessionId: input.kaizenSessionId ?? null,
     mode,
+    yaEnHandoff,
   });
 
   // ── Paso 16: parse loop sobre el texto del Agente ───────
@@ -262,6 +269,7 @@ async function executeTool(input: {
   subscriberId: string | null;
   kaizenSessionId: string | null;
   mode: FlowMode;
+  yaEnHandoff: boolean;
 }): Promise<ToolResult | null> {
   const v = input.verificador;
   const tool = v.accion_recomendada.tool_principal;
@@ -273,7 +281,17 @@ async function executeTool(input: {
     mode: input.mode,
   };
 
-  // Override: si requiere_handoff = true, forzamos handoff_asesora.
+  // Si el lead ya está en handoff (asesora ya fue asignada), NO disparamos
+  // otro handoff aunque el Verificador o el flag de alerta lo sugieran.
+  // El Verificador, al ver el contexto con rama_activa='handoff', tiende a
+  // querer mantener la rama → genera "te paso con X" en cada turno → alertas
+  // duplicadas y respuestas robóticas. El Agente toma el turno con texto
+  // natural que acompaña a la clienta mientras espera.
+  if (input.yaEnHandoff && (tool === "handoff_asesora" || v.alertas.requiere_handoff)) {
+    return null;
+  }
+
+  // Override: si requiere_handoff = true (y no estaba ya), arrancamos handoff.
   if (v.alertas.requiere_handoff) {
     return handoffAsesora({
       ...common,
