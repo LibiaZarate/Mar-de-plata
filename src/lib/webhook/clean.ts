@@ -96,6 +96,55 @@ function extractAttribution(body: Record<string, unknown>): Attribution {
   };
 }
 
+// Detecta el origen del lead leyendo el primer mensaje del cliente.
+// El dashboard genera links con textos pre-llenados específicos por origen
+// (ver /configuracion/tracking). Cuando el cliente abre WhatsApp y manda
+// el mensaje tal cual, nosotros lo reconocemos.
+//
+// Formato preferido (más confiable): [src:codigo] al final del mensaje.
+//   ej. "Hola, me interesa la joyería ✨ [src:ig_bio]"
+// Detectamos eso primero. Si no, hacemos un best-effort buscando keywords
+// de redes sociales / anuncios mencionados en texto natural.
+export function detectarOrigenDelMensaje(texto: string): {
+  canal: string | null;
+  codigo: string | null;
+  textoLimpio: string;
+} {
+  if (!texto) return { canal: null, codigo: null, textoLimpio: "" };
+
+  // 1) Tag explícito [src:codigo]
+  const tagMatch = texto.match(/\[src:([a-z0-9_-]+)\]/i);
+  if (tagMatch) {
+    const codigo = tagMatch[1].toLowerCase();
+    const textoLimpio = texto.replace(tagMatch[0], "").trim();
+    return { canal: mapearCodigoACanal(codigo), codigo, textoLimpio };
+  }
+
+  // 2) Best-effort por keywords en texto natural
+  const lower = texto.toLowerCase();
+  if (/\binstagram\b|\big\b/.test(lower)) return { canal: "Instagram", codigo: "instagram", textoLimpio: texto };
+  if (/\bfacebook\b|\bfb\b/.test(lower)) return { canal: "Facebook", codigo: "facebook", textoLimpio: texto };
+  if (/\btiktok\b|\btt\b/.test(lower)) return { canal: "TikTok", codigo: "tiktok", textoLimpio: texto };
+  if (/sitio web|p[áa]gina web|tu web/.test(lower)) return { canal: "Web", codigo: "web", textoLimpio: texto };
+  if (/anuncio|publicidad|ads?\b/.test(lower)) return { canal: "Meta", codigo: "anuncio", textoLimpio: texto };
+  if (/tarjeta de presentaci[óo]n|business card/.test(lower)) return { canal: "Tarjeta", codigo: "tarjeta", textoLimpio: texto };
+  if (/recomendaci[óo]n|me recomend/.test(lower)) return { canal: "Recurrente", codigo: "referido", textoLimpio: texto };
+
+  return { canal: null, codigo: null, textoLimpio: texto };
+}
+
+function mapearCodigoACanal(codigo: string): string {
+  if (codigo.startsWith("ig") || codigo.includes("instagram")) return "Instagram";
+  if (codigo.startsWith("fb") || codigo.includes("facebook")) return "Facebook";
+  if (codigo.startsWith("tt") || codigo.includes("tiktok")) return "TikTok";
+  if (codigo.startsWith("web") || codigo.includes("sitio")) return "Web";
+  if (codigo.includes("ad") || codigo.includes("anuncio") || codigo.includes("meta")) return "Meta";
+  if (codigo.includes("tarjeta") || codigo.includes("card")) return "Tarjeta";
+  if (codigo.includes("grupo") || codigo.includes("wsp_group")) return "Grupo";
+  if (codigo.includes("recomend") || codigo.includes("referi")) return "Recurrente";
+  return "Orgánico";
+}
+
 export function cleanManychatBody(body: Record<string, unknown>): CleanedPayload {
   const whatsappPhone = clean(body.whatsapp_phone as string);
   const phone = clean(body.phone as string);
@@ -112,16 +161,30 @@ export function cleanManychatBody(body: Record<string, unknown>): CleanedPayload
 
   const attribution = extractAttribution(body);
 
+  // Detección de origen leyendo el mensaje del cliente. Si el link de
+  // WhatsApp generado por Mar incluye [src:codigo] al final del texto
+  // pre-llenado, lo detectamos y limpiamos. Si no, mejor-esfuerzo por
+  // keywords ("instagram", "anuncio", etc.).
+  const origenDetectado = detectarOrigenDelMensaje(lastInput);
+  const userTextLimpio = origenDetectado.textoLimpio || lastInput;
+
+  // Prioridad para canal_origen:
+  //   1. canal_origen explícito del body (si vino del proveedor)
+  //   2. el detectado en el mensaje
+  //   3. default meta_ctwa
+  const canalOrigen =
+    clean(body.canal_origen as string) || origenDetectado.canal || "meta_ctwa";
+
   return {
     channel: "manychat",
     sessionId,
-    userText: lastInput,
+    userText: userTextLimpio,
     whatsappPhone,
     email: clean(body.email as string),
     timezone: clean(body.timezone as string) || "America/Mexico_City",
     tipoMensajeOriginal,
-    canalOrigen: clean(body.canal_origen as string) || "meta_ctwa",
-    anuncioId: clean(body.anuncio_id as string) ?? attribution.ad_id,
+    canalOrigen,
+    anuncioId: clean(body.anuncio_id as string) ?? attribution.ad_id ?? origenDetectado.codigo,
     subscriberId,
     attribution,
   };
