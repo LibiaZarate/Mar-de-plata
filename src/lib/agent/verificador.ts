@@ -156,6 +156,81 @@ function demoVerificador(mensaje: string, contextoLead?: unknown): VerificadorOu
       razonamiento_breve: "[demo] Detección por keyword 'pandora'",
     };
   }
+
+  // Tarjeta de crédito específicamente → FAQ #16
+  if (/tarjeta|\bvisa\b|mastercard|\bamex\b|american express/.test(m)) {
+    return {
+      ...FALLBACK,
+      _demo: true,
+      intencion_primaria: "consultar_faq",
+      confianza: 0.9,
+      rama_sugerida: "R1",
+      accion_recomendada: {
+        tool_principal: "enviar_imagen_faq",
+        parametros: {
+          id_imagen: 16,
+          texto_acompanante: "¡Claro linda! Aquí va la info de pagos con tarjeta 💗",
+        },
+        seguimiento_post: "preguntar_si_resolvio",
+      },
+      instrucciones_tono: {
+        ...FALLBACK.instrucciones_tono,
+        registro: "calido_nueva",
+      },
+      razonamiento_breve: "[demo] Pregunta por tarjeta → FAQ #16",
+    };
+  }
+
+  // Formas de pago genéricas (sin mencionar tarjeta) → FAQ #15
+  if (/(forma|m[eé]todo|manera).*pag|c[oó]mo (puedo )?pag|d[oó]nde pago|pagos|abonar/.test(m)) {
+    return {
+      ...FALLBACK,
+      _demo: true,
+      intencion_primaria: "consultar_faq",
+      confianza: 0.85,
+      rama_sugerida: "R1",
+      accion_recomendada: {
+        tool_principal: "enviar_imagen_faq",
+        parametros: {
+          id_imagen: 15,
+          texto_acompanante: "¡Va! Te paso las formas de pago, linda 💗",
+        },
+        seguimiento_post: "preguntar_si_resolvio",
+      },
+      instrucciones_tono: {
+        ...FALLBACK.instrucciones_tono,
+        registro: "calido_nueva",
+      },
+      razonamiento_breve: "[demo] Pregunta formas de pago genéricas → FAQ #15",
+    };
+  }
+
+  // Referencias / redes sociales → texto con los 3 links
+  if (
+    /referencia|rese[nñ]a|redes( sociales)?|\binsta(gram)?\b|\bface(book)?\b|tiktok|\big\b|\bfb\b|\btt\b|han comprado|gente.*compr|m[aá]s piezas|d[oó]nde ver|p[aá]gina/.test(
+      m,
+    )
+  ) {
+    return {
+      ...FALLBACK,
+      _demo: true,
+      intencion_primaria: "consultar_faq",
+      confianza: 0.88,
+      rama_sugerida: "R1",
+      accion_recomendada: {
+        tool_principal: "responder_texto_simple",
+        parametros: {},
+        seguimiento_post: "ninguno",
+      },
+      instrucciones_tono: {
+        ...FALLBACK.instrucciones_tono,
+        registro: "calido_nueva",
+        longitud_maxima_palabras: 70,
+      },
+      razonamiento_breve:
+        "[demo] Pregunta por referencias / redes → texto con links IG/FB/TikTok",
+    };
+  }
   if (/env[íi]o|envios|env[ií]a|mandan|mandas/.test(m)) {
     // ¿Mencionó origen? (ciudad MX, "nacional", "internacional", país)
     const mencionaInternacional = /internacional|extranjero|usa|estados unidos|espa[nñ]a|colombia|argentina|chile|per[uú]|brasil|francia|canad[áa]|alemania|italia/.test(

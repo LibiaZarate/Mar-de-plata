@@ -80,11 +80,27 @@ function demoAgenteText(input: {
     return `Para esa info te ayuda mejor ${asesora} cuando llegue 💗 ya viene en camino ✨`;
   }
 
-  // Si la clienta preguntó por envíos pero falta origen, pregúntale
   const mLower = input.mensajeActual.toLowerCase();
+
+  // Si la clienta preguntó por envíos pero falta origen, pregúntale
   const preguntaEnvios = /env[íi]o|envios|env[ií]a|mandan|mandas/.test(mLower);
   if (preguntaEnvios && tool === "responder_texto_simple") {
     return `¡Claro que sí, linda! 💗 Cuéntame, ¿de dónde nos escribes? Para darte la info exacta del envío ✨`;
+  }
+
+  // Si la clienta preguntó por referencias / redes sociales → texto con links
+  const preguntaRedes =
+    /referencia|rese[nñ]a|redes( sociales)?|\binsta(gram)?\b|\bface(book)?\b|tiktok|\big\b|\bfb\b|han comprado|gente.*compr|m[aá]s piezas|d[oó]nde ver|p[aá]gina/.test(
+      mLower,
+    );
+  if (preguntaRedes && tool === "responder_texto_simple") {
+    return `¡Claro linda! Échale ojo a nuestras redes, ahí ves muchas piezas y clientas felices 💗✨
+
+Instagram: https://www.instagram.com/mardeplatataxco/
+Facebook: https://www.facebook.com/mardeplatataxco/
+TikTok: https://www.tiktok.com/@mardeplatataxco
+
+Cuéntame qué te gustó cuando te des una vuelta 💕`;
   }
 
   switch (tool) {
@@ -98,6 +114,10 @@ function demoAgenteText(input: {
       const idImg = Number(
         input.verificador.accion_recomendada.parametros.id_imagen ?? 0,
       );
+      if (idImg === 15)
+        return `¡Va! Te paso las formas de pago, linda 💗 Échale ojo y me dices cuál te late`;
+      if (idImg === 16)
+        return `¡Claro linda! Aquí va la info de pagos con tarjeta 💗`;
       if (idImg === 17)
         return `¡Perfecto, linda! 🌊 Aquí te paso la info de envíos a México 💗`;
       if (idImg === 18)
