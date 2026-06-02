@@ -97,6 +97,23 @@ export function useEmbudoDia(range: DashboardRange = "hoy") {
   };
 }
 
+// ── Tendencias diarias (últimos N días, default 30) ──
+export type TendenciasDay = {
+  date: string;
+  leads: number;
+  facturacion: number;
+  pedidos: number;
+  efectividad: number;
+};
+
+export function useTendencias(days: number = 30) {
+  return useSWR<{ ok: boolean; days: number; series: TendenciasDay[]; error?: string }>(
+    `/api/dashboard/tendencias?days=${days}`,
+    fetcher,
+    POLL,
+  );
+}
+
 // ── Pipeline ──
 export function usePipelineLeads(canal: string | "all" = "all", asesora: string | "all" = "all") {
   const q = new URLSearchParams();

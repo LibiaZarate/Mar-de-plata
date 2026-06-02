@@ -11,6 +11,7 @@ import {
   type DashboardRange,
 } from "@/lib/queries";
 import { cn, formatMxn } from "@/lib/utils";
+import { Tendencias } from "./tendencias";
 
 const RANGE_LABELS: Record<DashboardRange, string> = {
   hoy: "Hoy",
@@ -42,6 +43,7 @@ export function Inicio() {
       <BloqueA range={range} />
       <BloqueB range={range} />
       <BloqueC range={range} />
+      <Tendencias />
     </div>
   );
 }

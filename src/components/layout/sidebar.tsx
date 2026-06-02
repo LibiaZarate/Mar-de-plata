@@ -18,10 +18,6 @@ export function Sidebar() {
 
   return (
     <aside className="w-[232px] shrink-0 h-screen sticky top-0 px-5 py-6 flex flex-col bg-cream-100">
-      <div className="text-[10px] tracking-[0.22em] uppercase text-foreground/60 font-medium mb-2">
-        Azxion · Kaizen
-      </div>
-
       <div className="font-serif-display text-[28px] leading-none border border-foreground/40 rounded-md px-3 py-2 mb-1.5 whitespace-nowrap">
         Mar de Plata
       </div>
