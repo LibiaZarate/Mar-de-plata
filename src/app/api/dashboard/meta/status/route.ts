@@ -17,13 +17,12 @@ type AdAccount = {
 };
 
 export async function GET() {
-  const { token, appId, adAccountId, businessId } = getMetaCreds();
+  const { token, appId, adAccountId, businessId } = await getMetaCreds();
   if (!token) {
     return NextResponse.json({
       ok: false,
       configured: false,
-      missing: ["META_ACCESS_TOKEN"],
-      message: "Falta META_ACCESS_TOKEN. Agrégalo a .env.local o a Vercel Env Vars.",
+      message: "No hay token de Meta configurado. Pégalo abajo.",
     });
   }
   try {
@@ -56,20 +55,20 @@ export async function GET() {
         meta_type: err.metaType,
         hint: hintFromError(err),
       },
-      { status: err.status >= 400 ? 200 : 500 },
+      { status: 200 },
     );
   }
 }
 
 function hintFromError(err: MetaApiError): string | null {
   if (err.metaCode === 190) {
-    return "Token inválido o expirado. Genera uno nuevo en https://developers.facebook.com/tools/explorer";
+    return "Token inválido o expirado. Genera uno nuevo y vuelve a pegarlo.";
   }
   if (err.metaCode === 200 || err.metaCode === 10) {
     return "El token no tiene los permisos necesarios. Necesitas ads_read o ads_management.";
   }
   if (err.metaCode === 100) {
-    return "Parámetro inválido. Verifica META_AD_ACCOUNT_ID (debe empezar con act_).";
+    return "Parámetro inválido. Verifica el Ad Account ID (debe empezar con act_).";
   }
   return null;
 }

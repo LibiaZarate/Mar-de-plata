@@ -1,23 +1,27 @@
 // Cliente de Meta Marketing API (Graph API).
-// Las credenciales viven en env vars · NUNCA en código.
+// Las credenciales viven en config_sistema (set desde la UI) con
+// fallback a env vars. Ver src/lib/secrets.ts.
+
+import { getSecret } from "@/lib/secrets";
 
 const GRAPH_VERSION = "v19.0";
 const GRAPH_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
-type MetaCreds = {
+export type MetaCreds = {
   token: string | null;
   appId: string | null;
   adAccountId: string | null;
   businessId: string | null;
 };
 
-export function getMetaCreds(): MetaCreds {
-  return {
-    token: process.env.META_ACCESS_TOKEN ?? null,
-    appId: process.env.META_APP_ID ?? null,
-    adAccountId: process.env.META_AD_ACCOUNT_ID ?? null,
-    businessId: process.env.META_BUSINESS_ID ?? null,
-  };
+export async function getMetaCreds(): Promise<MetaCreds> {
+  const [token, appId, adAccountId, businessId] = await Promise.all([
+    getSecret("meta_access_token"),
+    getSecret("meta_app_id"),
+    getSecret("meta_ad_account_id"),
+    getSecret("meta_business_id"),
+  ]);
+  return { token, appId, adAccountId, businessId };
 }
 
 export class MetaApiError extends Error {
@@ -36,9 +40,9 @@ export async function metaGet<T>(
   path: string,
   params?: Record<string, string>,
 ): Promise<T> {
-  const { token } = getMetaCreds();
+  const { token } = await getMetaCreds();
   if (!token) {
-    throw new MetaApiError(0, "META_ACCESS_TOKEN no está definida");
+    throw new MetaApiError(0, "No hay META_ACCESS_TOKEN configurado");
   }
   const url = new URL(GRAPH_URL + path);
   url.searchParams.set("access_token", token);
@@ -48,9 +52,7 @@ export async function metaGet<T>(
     }
   }
 
-  const r = await fetch(url.toString(), {
-    cache: "no-store",
-  });
+  const r = await fetch(url.toString(), { cache: "no-store" });
 
   if (!r.ok) {
     let body: { error?: { message: string; code?: number; error_subcode?: number; type?: string } } = {};
@@ -69,9 +71,8 @@ export async function metaGet<T>(
   return (await r.json()) as T;
 }
 
-// Auto-detecta el primer ad account si no está configurado
 export async function resolveAdAccountId(): Promise<string> {
-  const { adAccountId } = getMetaCreds();
+  const { adAccountId } = await getMetaCreds();
   if (adAccountId) {
     return adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`;
   }

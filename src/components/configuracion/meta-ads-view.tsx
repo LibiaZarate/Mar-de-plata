@@ -1,18 +1,19 @@
 "use client";
 
-import { useState } from "react";
-import useSWR from "swr";
+import { useEffect, useState } from "react";
+import useSWR, { mutate } from "swr";
 import {
   CheckCircle2,
-  XCircle,
   AlertCircle,
   ExternalLink,
   ChevronDown,
   ChevronRight,
-  Copy,
-  Check,
   Megaphone,
-  Sparkles,
+  Save,
+  Trash2,
+  KeyRound,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { cn, formatMxn } from "@/lib/utils";
 
@@ -26,19 +27,40 @@ type Status = {
   business_id?: string | null;
   configured_ad_account?: string | null;
   user?: { id: string; name?: string };
-  ad_accounts?: { id: string; name: string; account_status: number; currency: string; timezone_name: string }[];
+  ad_accounts?: {
+    id: string;
+    name: string;
+    account_status: number;
+    currency: string;
+    timezone_name: string;
+  }[];
   auto_selected?: string | null;
   error?: string;
   meta_code?: number;
   hint?: string;
-  missing?: string[];
   message?: string;
+};
+
+type CredsState = {
+  ok: boolean;
+  configured: {
+    app_id: boolean;
+    access_token: boolean;
+    ad_account_id: boolean;
+    business_id: boolean;
+  };
+  mascaras: {
+    app_id: string;
+    access_token: string;
+    ad_account_id: string;
+    business_id: string;
+  };
 };
 
 type CampaignsResp = {
   ok: boolean;
   ad_account_id?: string;
-  campaigns?: {
+  campaigns?: Array<{
     id: string;
     name: string;
     objective: string;
@@ -55,7 +77,7 @@ type CampaignsResp = {
     dashboard: { leads: number; pagados: number; facturacion: number };
     roas: number | null;
     cpl_dashboard: number | null;
-  }[];
+  }>;
   totales?: {
     spend: number;
     impressions: number;
@@ -68,11 +90,13 @@ type CampaignsResp = {
 
 export function MetaAdsView() {
   const status = useSWR<Status>("/api/dashboard/meta/status", fetcher);
-  const days = 30;
+  const creds = useSWR<CredsState>("/api/dashboard/meta/credentials", fetcher);
   const camps = useSWR<CampaignsResp>(
-    `/api/dashboard/meta/campanas?days=${days}`,
+    status.data?.ok ? "/api/dashboard/meta/campanas?days=30" : null,
     fetcher,
   );
+
+  const isConnected = status.data?.ok === true;
 
   return (
     <div className="px-10 py-6 space-y-6">
@@ -82,20 +106,275 @@ export function MetaAdsView() {
           Conexión con Meta Ads
         </h1>
         <div className="text-[13px] text-foreground/60 mt-2 max-w-3xl">
-          Importa automáticamente todas las campañas y anuncios de tu Ad Account
-          de Meta. Cruza el gasto de Meta con la facturación del dashboard para
-          calcular ROAS real por anuncio.
+          Importa automáticamente todas las campañas y anuncios de Meta. Cruza
+          el gasto de Meta con la facturación del dashboard para calcular ROAS
+          real por anuncio. Las credenciales se guardan en Supabase, no en
+          archivos.
         </div>
       </div>
 
-      <SetupGuide />
+      <CredentialsForm creds={creds.data} loading={creds.isLoading} />
+
       <StatusCard status={status.data} loading={status.isLoading} />
-      {status.data?.ok && (
-        <CampaignsTable resp={camps.data} loading={camps.isLoading} days={days} />
+
+      {isConnected && (
+        <CampaignsTable resp={camps.data} loading={camps.isLoading} days={30} />
       )}
+
+      <SetupGuide />
     </div>
   );
 }
+
+// ────────────────────────────────────────────────────────────
+// Form de credenciales
+// ────────────────────────────────────────────────────────────
+
+function CredentialsForm({
+  creds,
+  loading,
+}: {
+  creds?: CredsState;
+  loading?: boolean;
+}) {
+  const [appId, setAppId] = useState("");
+  const [token, setToken] = useState("");
+  const [adAccountId, setAdAccountId] = useState("");
+  const [businessId, setBusinessId] = useState("");
+  const [showToken, setShowToken] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [showForm, setShowForm] = useState(false);
+
+  // Si nunca ha guardado credenciales, abrir el form por default
+  useEffect(() => {
+    if (creds && !creds.configured.access_token) setShowForm(true);
+  }, [creds]);
+
+  async function guardar() {
+    setSaving(true);
+    try {
+      const body: Record<string, string> = {};
+      if (appId.trim()) body.app_id = appId.trim();
+      if (token.trim()) body.access_token = token.trim();
+      if (adAccountId.trim()) body.ad_account_id = adAccountId.trim();
+      if (businessId.trim()) body.business_id = businessId.trim();
+
+      const r = await fetch("/api/dashboard/meta/credentials", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      if (!d.ok) {
+        alert(d.error ?? "Error al guardar");
+        return;
+      }
+      setAppId("");
+      setToken("");
+      setAdAccountId("");
+      setBusinessId("");
+      setSavedAt(Date.now());
+      setShowForm(false);
+      mutate("/api/dashboard/meta/credentials");
+      mutate("/api/dashboard/meta/status");
+      mutate("/api/dashboard/meta/campanas?days=30");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function borrarTodo() {
+    if (
+      !confirm(
+        "¿Borrar las credenciales de Meta? Tendrás que volver a pegarlas para reconectar.",
+      )
+    )
+      return;
+    await fetch("/api/dashboard/meta/credentials", { method: "DELETE" });
+    mutate("/api/dashboard/meta/credentials");
+    mutate("/api/dashboard/meta/status");
+  }
+
+  if (loading) {
+    return <div className="h-24 rounded-lg bg-cream-200 animate-pulse" />;
+  }
+
+  if (!creds) return null;
+
+  const yaConfigurado = creds.configured.access_token;
+
+  if (yaConfigurado && !showForm) {
+    return (
+      <div className="rounded-lg border border-foreground/15 bg-cream-50 px-5 py-4">
+        <div className="flex items-center gap-3">
+          <KeyRound className="h-5 w-5 text-sage-600 shrink-0" />
+          <div className="flex-1">
+            <div className="font-medium text-sm">Credenciales guardadas en Supabase</div>
+            <div className="text-[11px] text-foreground/55 mt-0.5 grid grid-cols-2 gap-x-4 mt-1.5">
+              <div>
+                App ID:{" "}
+                <code className="text-foreground">
+                  {creds.mascaras.app_id || "—"}
+                </code>
+              </div>
+              <div>
+                Access Token:{" "}
+                <code className="text-foreground">
+                  {creds.mascaras.access_token || "—"}
+                </code>
+              </div>
+              <div>
+                Ad Account:{" "}
+                <code className="text-foreground">
+                  {creds.mascaras.ad_account_id || "(auto-detectado)"}
+                </code>
+              </div>
+              <div>
+                Business ID:{" "}
+                <code className="text-foreground">
+                  {creds.mascaras.business_id || "—"}
+                </code>
+              </div>
+            </div>
+            {savedAt && Date.now() - savedAt < 8000 && (
+              <div className="text-[11px] text-sage-600 mt-2 inline-flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3" /> guardado
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => setShowForm(true)}
+            className="text-[11px] px-2.5 py-1.5 rounded border border-foreground/20 hover:bg-cream-100"
+          >
+            cambiar
+          </button>
+          <button
+            onClick={borrarTodo}
+            className="text-[11px] px-2 py-1.5 rounded border border-foreground/20 text-foreground/55 hover:text-rosey-500 hover:bg-cream-100 inline-flex items-center gap-1"
+            title="Borrar credenciales"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-rosey-300 bg-rosey-50/30 p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="font-medium">
+            {yaConfigurado ? "Editar credenciales" : "Pega tus credenciales de Meta"}
+          </div>
+          <div className="text-[12px] text-foreground/65 mt-0.5">
+            Se guardan en Supabase. No tocas archivos. No reinicias nada.
+          </div>
+        </div>
+        {yaConfigurado && (
+          <button
+            onClick={() => setShowForm(false)}
+            className="text-[11px] text-foreground/55 hover:text-foreground"
+          >
+            cancelar
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="App ID">
+          <input
+            value={appId}
+            onChange={(e) => setAppId(e.target.value)}
+            placeholder={creds.mascaras.app_id || "989087883972224"}
+            className="input font-mono text-[12px]"
+          />
+        </Field>
+        <Field label="Business Manager ID (opcional)">
+          <input
+            value={businessId}
+            onChange={(e) => setBusinessId(e.target.value)}
+            placeholder={creds.mascaras.business_id || "344419908689274"}
+            className="input font-mono text-[12px]"
+          />
+        </Field>
+
+        <Field label="Access Token" wide>
+          <div className="relative">
+            <input
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder={
+                creds.mascaras.access_token || "EAAxxxxxx... (pégalo aquí)"
+              }
+              type={showToken ? "text" : "password"}
+              className="input font-mono text-[11px] pr-9"
+            />
+            <button
+              type="button"
+              onClick={() => setShowToken(!showToken)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-foreground/45 hover:text-foreground"
+              title={showToken ? "Ocultar" : "Mostrar"}
+            >
+              {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+        </Field>
+
+        <Field label="Ad Account ID (opcional · auto-detecta si lo dejas vacío)" wide>
+          <input
+            value={adAccountId}
+            onChange={(e) => setAdAccountId(e.target.value)}
+            placeholder={creds.mascaras.ad_account_id || "act_1234567890"}
+            className="input font-mono text-[12px]"
+          />
+        </Field>
+      </div>
+
+      <div className="flex items-center justify-between pt-2 border-t border-rosey-200/40">
+        <div className="text-[11px] text-foreground/55">
+          ⚠️ El access token <strong>nunca</strong> se vuelve a mostrar después
+          de guardar — para cambiarlo pega uno nuevo.
+        </div>
+        <button
+          onClick={guardar}
+          disabled={saving || (!appId && !token && !adAccountId && !businessId)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-rosey-300 hover:bg-rosey-400 text-cream-50 text-sm font-medium disabled:opacity-50"
+        >
+          <Save className="h-3.5 w-3.5" />
+          {saving ? "Guardando…" : "Guardar"}
+        </button>
+      </div>
+
+      <style>{`
+        .input { width:100%; padding:8px 10px; border:1px solid hsl(var(--border)); border-radius:6px; background:hsl(var(--card)); font-size:14px; color:hsl(var(--foreground)); outline:none; }
+        .input:focus { border-color:hsl(var(--primary)); }
+      `}</style>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  wide,
+  children,
+}: {
+  label: string;
+  wide?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className={cn("flex flex-col gap-1", wide && "col-span-2")}>
+      <span className="label-xs">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+// ────────────────────────────────────────────────────────────
+// Estado de la conexión
+// ────────────────────────────────────────────────────────────
 
 function StatusCard({ status, loading }: { status?: Status; loading?: boolean }) {
   if (loading) {
@@ -104,28 +383,7 @@ function StatusCard({ status, loading }: { status?: Status; loading?: boolean })
   if (!status) return null;
 
   if (!status.configured) {
-    return (
-      <div className="rounded-lg border border-rosey-300 bg-rosey-50/40 p-5">
-        <div className="flex items-start gap-3">
-          <XCircle className="h-5 w-5 text-rosey-500 shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <div className="font-medium">No conectado</div>
-            <p className="text-[12px] text-foreground/70 mt-1">
-              {status.message ?? "Falta META_ACCESS_TOKEN en .env.local"}
-            </p>
-            {status.missing && (
-              <ul className="mt-3 space-y-1 text-[12px]">
-                {status.missing.map((v) => (
-                  <li key={v} className="font-mono text-foreground/65">
-                    · {v}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      </div>
-    );
+    return null; // El form de arriba ya muestra qué falta
   }
 
   if (!status.ok) {
@@ -134,7 +392,7 @@ function StatusCard({ status, loading }: { status?: Status; loading?: boolean })
         <div className="flex items-start gap-3">
           <AlertCircle className="h-5 w-5 text-ambr-600 shrink-0 mt-0.5" />
           <div className="flex-1">
-            <div className="font-medium">Error de conexión</div>
+            <div className="font-medium">Error al conectar con Meta</div>
             <p className="text-[12px] text-foreground/75 mt-1">{status.error}</p>
             {status.hint && (
               <p className="text-[12px] text-foreground/60 mt-2 italic">
@@ -191,9 +449,8 @@ function StatusCard({ status, loading }: { status?: Status; loading?: boolean })
               </ul>
               {!status.configured_ad_account && status.ad_accounts.length > 1 && (
                 <p className="text-[11px] text-foreground/55 italic mt-2">
-                  Si tienes varios ad accounts, define{" "}
-                  <code>META_AD_ACCOUNT_ID</code> en .env.local para fijar
-                  cuál usar.
+                  Si tienes varios ad accounts, pega el ID del que quieras
+                  fijar arriba (campo Ad Account ID).
                 </p>
               )}
             </div>
@@ -203,6 +460,10 @@ function StatusCard({ status, loading }: { status?: Status; loading?: boolean })
     </div>
   );
 }
+
+// ────────────────────────────────────────────────────────────
+// Tabla de campañas
+// ────────────────────────────────────────────────────────────
 
 function CampaignsTable({
   resp,
@@ -228,7 +489,10 @@ function CampaignsTable({
   if (campaigns.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-foreground/20 bg-cream-50 px-6 py-10 text-center">
-        <Megaphone className="h-8 w-8 mx-auto text-foreground/30 mb-2" strokeWidth={1.3} />
+        <Megaphone
+          className="h-8 w-8 mx-auto text-foreground/30 mb-2"
+          strokeWidth={1.3}
+        />
         <div className="font-italic-serif text-foreground/55">
           No hay campañas en este Ad Account
         </div>
@@ -281,7 +545,10 @@ function CampaignsTable({
           </thead>
           <tbody>
             {campaigns.map((c) => (
-              <tr key={c.id} className="border-b border-foreground/10 last:border-0 hover:bg-cream-100/40">
+              <tr
+                key={c.id}
+                className="border-b border-foreground/10 last:border-0 hover:bg-cream-100/40"
+              >
                 <td className="px-4 py-3">
                   <div className="font-medium truncate max-w-xs">{c.name}</div>
                   <div className="text-[10px] text-foreground/45 flex items-center gap-2 mt-0.5">
@@ -311,7 +578,9 @@ function CampaignsTable({
                   {c.dashboard.pagados}
                 </td>
                 <td className="text-right px-3 py-3 tabular-nums">
-                  {c.dashboard.facturacion > 0 ? formatMxn(c.dashboard.facturacion) : "—"}
+                  {c.dashboard.facturacion > 0
+                    ? formatMxn(c.dashboard.facturacion)
+                    : "—"}
                 </td>
                 <td className="text-right px-4 py-3 tabular-nums">
                   {c.roas !== null ? (
@@ -359,10 +628,14 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// ────────────────────────────────────────────────────────────
+// Guía paso a paso
+// ────────────────────────────────────────────────────────────
+
 function SetupGuide() {
   const [open, setOpen] = useState(false);
   return (
-    <div className="rounded-lg border border-rosey-200 bg-cream-50 overflow-hidden">
+    <div className="rounded-lg border border-foreground/15 bg-cream-50 overflow-hidden">
       <button
         onClick={() => setOpen(!open)}
         className="w-full px-5 py-3 flex items-center gap-2 text-left hover:bg-cream-100"
@@ -373,7 +646,7 @@ function SetupGuide() {
           <ChevronRight className="h-4 w-4 text-rosey-500" />
         )}
         <span className="font-serif-display text-[18px]">
-          ¿Cómo configuro esto?
+          ¿De dónde saco el App ID, Token y Ad Account ID?
         </span>
         <span className="ml-auto label-xs">paso a paso</span>
       </button>
@@ -388,33 +661,35 @@ function SetupGuide() {
               rel="noreferrer"
               className="text-rosey-500 underline inline-flex items-center gap-1"
             >
-              developers.facebook.com/apps <ExternalLink className="h-3 w-3" />
-            </a>{" "}
-            con la cuenta de Mar. Si ya existe la app del negocio, úsala. Si
-            no, <strong>Create App</strong> tipo <strong>Business</strong>.
-            Anota el <code>App ID</code>.
+              developers.facebook.com/apps{" "}
+              <ExternalLink className="h-3 w-3" />
+            </a>
+            . Si ya tienes una app, úsala. Si no, <strong>Create App</strong>{" "}
+            tipo <strong>Business</strong>. Anota el <code>App ID</code> (lo
+            ves arriba en la cabecera de la app).
           </Step>
 
-          <Step n="2" title="Marketing API → Get Started">
+          <Step n="2" title="Marketing API → Set Up">
             En la app, menú izquierdo: <strong>Add Products</strong> →{" "}
-            <strong>Marketing API</strong> → Set Up.
+            <strong>Marketing API</strong> → Set Up. Eso habilita los scopes.
           </Step>
 
-          <Step n="3" title="Access Token (para empezar)">
-            Para empezar usa{" "}
+          <Step n="3" title="Access Token">
+            Ve a{" "}
             <a
               href="https://developers.facebook.com/tools/explorer"
               target="_blank"
               rel="noreferrer"
               className="text-rosey-500 underline inline-flex items-center gap-1"
             >
-              Graph API Explorer <ExternalLink className="h-3 w-3" />
+              Graph API Explorer{" "}
+              <ExternalLink className="h-3 w-3" />
             </a>
-            : elige la app del paso 1, en{" "}
-            <strong>User or Page</strong> → User Token, y agrega scopes{" "}
-            <code>ads_read</code> y <code>business_management</code>. Click{" "}
-            <strong>Generate Access Token</strong>. Cópialo. Este token dura
-            ~60 días.
+            . Selecciona tu app del dropdown, en <strong>User or Page</strong>{" "}
+            elige <em>User Token</em>, agrega los scopes{" "}
+            <code>ads_read</code> y <code>business_management</code>, click{" "}
+            <strong>Generate Access Token</strong>. Cópialo y pégalo arriba.
+            Este token dura 60 días.
           </Step>
 
           <Step n="4" title="Para producción · System User Token (permanente)">
@@ -428,11 +703,12 @@ function SetupGuide() {
               Business Manager → System Users{" "}
               <ExternalLink className="h-3 w-3" />
             </a>
-            : crea un System User (Admin), asignalo a la app del paso 1, y
-            generale un token con <code>ads_read</code>. Este NO expira.
+            : crea un System User (Admin), asígnalo a la app del paso 1, genera
+            su token con <code>ads_read</code>. Este NO expira y es el correcto
+            para producción.
           </Step>
 
-          <Step n="5" title="Ad Account ID">
+          <Step n="5" title="Ad Account ID (opcional)">
             En{" "}
             <a
               href="https://business.facebook.com/settings/ad-accounts"
@@ -442,63 +718,19 @@ function SetupGuide() {
             >
               Business Manager → Ad Accounts{" "}
               <ExternalLink className="h-3 w-3" />
-            </a>
-            : copia el ID (formato <code>act_1234567890</code>). Si no lo
-            sabes, el dashboard auto-detecta el primero cuando le pasas solo
-            el token.
+            </a>{" "}
+            copias el ID (formato <code>act_1234567890</code>). Si lo dejas
+            vacío arriba, el dashboard usa el primero que vea.
           </Step>
 
-          <Step n="6" title="Pegar en Vercel">
-            En tu proyecto de Vercel → Settings → Environment Variables, agrega:
-            <div className="mt-2 space-y-1">
-              <EnvVarRow name="META_APP_ID" />
-              <EnvVarRow name="META_ACCESS_TOKEN" />
-              <EnvVarRow name="META_AD_ACCOUNT_ID" />
-              <EnvVarRow name="META_BUSINESS_ID" />
-            </div>
-            Marca las 3 environments (Production, Preview, Development), Save,
-            y redeploya. En local van en <code>.env.local</code>.
-          </Step>
-
-          <div className="border-t border-rosey-200/40 pt-3 mt-3 text-[12px] text-foreground/55 flex items-start gap-2">
-            <Sparkles className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            <p>
-              Una vez configurado, el dashboard sincroniza automáticamente
-              cada vez que abres esta pantalla. La tabla cruza el gasto real
-              de Meta con la facturación del dashboard para calcular el ROAS.
-            </p>
+          <div className="border-t border-foreground/10 pt-3 mt-3 text-[12px] text-foreground/55">
+            🔒 Las credenciales se guardan encriptadas en Supabase (la propia
+            instancia del cliente). No las commiteamos en código ni las
+            mostramos completas en la UI. Solo el dashboard server-side las
+            usa para hablar con Meta.
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function EnvVarRow({ name }: { name: string }) {
-  const [copied, setCopied] = useState(false);
-  function copy() {
-    navigator.clipboard.writeText(name).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  }
-  return (
-    <div className="flex items-center gap-2">
-      <code className="flex-1 font-mono text-[11px] bg-cream-100 border border-foreground/10 rounded px-2 py-1">
-        {name}
-      </code>
-      <button
-        onClick={copy}
-        className={cn(
-          "inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded border transition-colors",
-          copied
-            ? "border-sage-300 text-sage-600 bg-sage-50"
-            : "border-foreground/20 hover:bg-cream-100",
-        )}
-      >
-        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-        {copied ? "Ok" : "Copiar"}
-      </button>
     </div>
   );
 }
