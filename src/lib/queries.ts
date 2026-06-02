@@ -114,6 +114,24 @@ export function useTendencias(days: number = 30) {
   );
 }
 
+// ── Top anuncios (atribución) ──
+export type AdRow = {
+  anuncio_id: string;
+  campaign_id: string | null;
+  leads: number;
+  pagados: number;
+  facturacion: number;
+  conversion_pct: number;
+};
+
+export function useTopAnuncios(days: number = 30) {
+  return useSWR<{ ok: boolean; days: number; anuncios: AdRow[]; error?: string }>(
+    `/api/dashboard/atribucion?days=${days}`,
+    fetcher,
+    POLL,
+  );
+}
+
 // ── Pipeline ──
 export function usePipelineLeads(canal: string | "all" = "all", asesora: string | "all" = "all") {
   const q = new URLSearchParams();

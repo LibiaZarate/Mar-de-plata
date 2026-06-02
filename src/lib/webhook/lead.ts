@@ -73,13 +73,21 @@ export async function findOrCreateLead(
     return { lead: existing as Lead, created: false };
   }
 
-  const etiquetas = options?.etiquetas ?? [];
+  const etiquetas = [...(options?.etiquetas ?? [])];
+  // Si vino atribución de Meta, la agregamos como etiquetas analizables
+  // (sin necesitar migrar el schema). campaign_id y adset_id se vuelven
+  // tags tipo "campaign:123" y "adset:456" para que el dashboard los
+  // pueda agrupar y mostrar.
+  const att = cleaned.attribution;
+  if (att.campaign_id) etiquetas.push(`campaign:${att.campaign_id}`);
+  if (att.adset_id) etiquetas.push(`adset:${att.adset_id}`);
+  if (att.ctwa_clid) etiquetas.push(`ctwa:${att.ctwa_clid}`);
 
   const baseInsert: Record<string, unknown> = {
     numero_whatsapp: numero,
     estado: "lead_nueva",
     canal_origen: normalizarCanal(cleaned.canalOrigen),
-    anuncio_id: cleaned.anuncioId,
+    anuncio_id: cleaned.anuncioId ?? att.ad_id,
     primer_contacto: new Date().toISOString(),
     ticket_promedio: 0,
     compras_totales: 0,
