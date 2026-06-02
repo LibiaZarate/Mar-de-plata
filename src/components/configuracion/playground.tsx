@@ -114,10 +114,8 @@ export function Playground() {
       // el lead en el pipeline y los KPIs
       historyRes.mutate();
       recentsRes.mutate();
-      mutate("kpi:leads_hoy");
-      mutate("blocC:embudo");
-      mutate("blocB:canales");
-      mutate((k) => Array.isArray(k) && k[0] === "pipeline");
+      mutate("/api/dashboard/inicio");
+      mutate((k) => typeof k === "string" && k.startsWith("/api/dashboard/pipeline"));
     } catch (e) {
       setTurns((prev) => [
         ...prev,
