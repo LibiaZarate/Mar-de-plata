@@ -6,6 +6,7 @@ import {
   KeyRound,
   ExternalLink,
   Link2,
+  Megaphone,
   type LucideIcon,
 } from "lucide-react";
 
@@ -22,6 +23,12 @@ const cards: Card[] = [
     title: "Tracking de origen",
     description: "Genera un link de WhatsApp distinto por cada lugar (Instagram, anuncios, web) y mide de dónde vienen tus leads.",
     Icon: Link2,
+  },
+  {
+    href: "/configuracion/meta-ads",
+    title: "Meta Marketing API",
+    description: "Conexión directa con Meta Ads: importa campañas, mide gasto y ROAS real cruzando con la facturación del dashboard.",
+    Icon: Megaphone,
   },
   {
     href: "/configuracion/webhook",
