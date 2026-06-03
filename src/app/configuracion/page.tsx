@@ -5,7 +5,6 @@ import {
   FileText,
   KeyRound,
   ExternalLink,
-  Link2,
   Megaphone,
   type LucideIcon,
 } from "lucide-react";
@@ -18,12 +17,6 @@ type Card = {
 };
 
 const cards: Card[] = [
-  {
-    href: "/configuracion/tracking",
-    title: "Tracking de origen",
-    description: "Genera un link de WhatsApp distinto por cada lugar (Instagram, anuncios, web) y mide de dónde vienen tus leads.",
-    Icon: Link2,
-  },
   {
     href: "/configuracion/meta-ads",
     title: "Meta Marketing API",
