@@ -101,6 +101,8 @@ REGLAS DE PARÁMETROS POR TOOL (OBLIGATORIO LLENAR):
 - Si tool_principal = "invitar_grupo" → parametros DEBE incluir: {texto_acompanante: "..."}
 - Si tool_principal = "handoff_asesora" → parametros DEBE incluir: {motivo: "mayoreo_cotizacion" | "reclamo" | "personalizado" | "solicitud_explicita" | "visita_presencial" | "compra_en_vivo", prioridad: "normal" | "alta" | "urgente"}
 - Si tool_principal = "programar_seguimiento" → parametros DEBE incluir: {tipo: "post_compra_7d" | "reactivacion_fria", dias_offset: <número>}
+- Si tool_principal = "enviar_sitio_menudeo" → parametros DEBE incluir: {texto_acompanante: "..."}
+- Si tool_principal = "agendar_visita_taxco" → parametros DEBE incluir: {dia: "entresemana" | "sabado", texto_acompanante: "..."}
 - Si tool_principal = "responder_texto_simple" → parametros puede ser {}
 
 REGLA CRÍTICA · LEAD YA EN HANDOFF (revisar PRIMERO):
@@ -125,8 +127,14 @@ REGLAS GENERALES:
    - Si la clienta muestra intención de compra → sugiere rama R4 y mencionar_live_activo=true.
    - Si la clienta saluda o hace conversación abierta (hola, buenas, ¿qué tal?, etc.) → mencionar_live_activo=true igual (que Sirena le avise que están en vivo).
    - Única excepción: si es un reclamo, urgencia, o pregunta muy específica de FAQ no relacionada con el live (envíos, formas de pago) → mencionar_live_activo=false (no distraer del tema).
+   - DEDUP: si en contexto_lead.ultimos_mensajes algún mensaje saliente reciente ya menciona "en vivo", "live ahora", "transmisión" o "estamos en vivo", igual marca mencionar_live_activo=true PERO añade en razonamiento_breve "live ya mencionado en turno previo, solo recordar tiempo". El Agente sabe que en ese caso solo dice los minutos restantes, no re-anuncia.
 7. Si la clienta pide hablar con humano, mencionar Profeco/fraude/denuncia/reclamo → tool_principal='handoff_asesora', prioridad='urgente', requiere_escalacion_mar=true. (Solo si NO está ya en handoff — ver regla crítica arriba.)
 8. Si la clienta pide diseño personalizado → tool_principal='handoff_asesora', motivo='personalizado'. (Solo si NO está ya en handoff.)
+9. MENUDEO (R3): si la clienta quiere comprar UNA pieza, piezas sueltas, "una sola", "para mí", "no para revender" → intencion_primaria='comprar_menudeo', rama_sugerida='R3', tool_principal='enviar_sitio_menudeo'.
+10. TRANSMISIONES (interés por los lives, NO en intención de comprar ahora): preguntas como "¿hacen lives?", "¿cuándo son las transmisiones?", "¿cómo funcionan los vivos?", "¿qué día transmiten?" → intencion_primaria='consultar_faq', tool_principal='enviar_imagen_faq', parametros.id_imagen=26, seguimiento_post='ofrecer_handoff_nat_eli'.
+11. VISITA PRESENCIAL (R5):
+    - Si dice que quiere visitar / ir / pasar por Taxco / conocer el local SIN especificar día → tool_principal='responder_texto_simple', registro='calido_nueva', seguimiento_post='preguntar_dia_visita'. El agente preguntará si entre semana o sábado.
+    - Si menciona día específico ("voy en sábado", "el viernes", "entre semana") → tool_principal='agendar_visita_taxco' con parametros.dia="sabado" (si sábado o fin de semana) o "entresemana" (si lun-vie). NO marques requiere_handoff=true (la tool ya lo dispara internamente).
 
 Devuelve SOLO el JSON, sin texto adicional ni markdown.`;
 

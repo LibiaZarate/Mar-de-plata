@@ -14,6 +14,7 @@ import {
 import { findOrCreateLead } from "./lead";
 import {
   consultarLiveActivo,
+  resolveSirenaUrls,
   obtenerContextoLead,
   enrichMetadata,
   yaPagoDeposito,
@@ -27,6 +28,8 @@ import {
   enviarCatalogo,
   invitarGrupo,
   handoffAsesora,
+  enviarSitioMenudeo,
+  agendarVisitaTaxco,
   programarSeguimiento,
   type ToolResult,
 } from "@/lib/agent/tools";
@@ -97,7 +100,7 @@ export async function runFlowMadre(input: {
       demo: false,
       earlyExit: { reason: "guardrail", plan },
       leadCreated: created,
-      metadata: enrichMetadata(await consultarLiveActivo()),
+      metadata: enrichMetadata(await consultarLiveActivo(), await resolveSirenaUrls()),
       contexto: {},
       verificador: {} as VerificadorOutput,
       toolResult: null,
@@ -123,7 +126,7 @@ export async function runFlowMadre(input: {
   });
 
   // ── Pasos 9 + 10 + 11: live + contexto + enrich ─────────
-  const live = await consultarLiveActivo();
+  const [live, urls] = await Promise.all([consultarLiveActivo(), resolveSirenaUrls()]);
   let contexto: Record<string, unknown> = {};
   try {
     contexto = await obtenerContextoLead(numero);
@@ -137,7 +140,7 @@ export async function runFlowMadre(input: {
       seguimientos_pendientes: [],
     };
   }
-  const metadata = enrichMetadata(live);
+  const metadata = enrichMetadata(live, urls);
   const pagoDeposito = await yaPagoDeposito(numero);
 
   // ── Paso 12 + 13: Verificador ────────────────────────────
@@ -334,6 +337,17 @@ async function executeTool(input: {
           tipo: (p.tipo as string) ?? "reactivacion_fria",
           dias_offset: Number(p.dias_offset ?? 7),
           contexto_adicional: (p.contexto_adicional as string) ?? undefined,
+        });
+      case "enviar_sitio_menudeo":
+        return await enviarSitioMenudeo({
+          ...common,
+          texto_acompanante: String(p.texto_acompanante ?? ""),
+        });
+      case "agendar_visita_taxco":
+        return await agendarVisitaTaxco({
+          ...common,
+          dia: (p.dia as "entresemana" | "sabado") ?? "entresemana",
+          texto_acompanante: String(p.texto_acompanante ?? ""),
         });
       case "responder_texto_simple":
       default:

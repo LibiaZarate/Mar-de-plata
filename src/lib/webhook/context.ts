@@ -9,12 +9,46 @@ export type LiveInfo = {
   proximo_live: null | {
     id: number;
     fecha: string;
+    fecha_fin: string;
     red: string;
     codigo: string | null;
     descripcion: string | null;
     link: string | null;
   };
 };
+
+export type SirenaUrls = {
+  sitio_web_menudeo: string;
+  ubicacion_taxco_maps: string;
+  politicas_manual_pdf: string;
+};
+
+const URLS_DEFAULT: SirenaUrls = {
+  sitio_web_menudeo: "https://www.mardeplatataxco.com",
+  ubicacion_taxco_maps:
+    "https://www.google.com/maps/search/?api=1&query=Plaza+San+Hip%C3%B3lito+Local+5%2C+Taxco+de+Alarc%C3%B3n%2C+40200",
+  politicas_manual_pdf:
+    "https://nbciljmueoihtzznmvdg.supabase.co/storage/v1/object/public/politicasmanual/Politicas%20y%20Manual%20de%20Compras.pdf",
+};
+
+export async function resolveSirenaUrls(): Promise<SirenaUrls> {
+  const sb = createAdminClient();
+  const { data } = await sb
+    .from("config_sistema")
+    .select("clave,valor")
+    .in("clave", [
+      "sitio_web_menudeo",
+      "ubicacion_taxco_maps",
+      "politicas_manual_pdf",
+    ]);
+  const map = new Map((data ?? []).map((r) => [r.clave as string, (r.valor as string) ?? ""]));
+  const pick = (k: keyof SirenaUrls) => (map.get(k)?.trim() || URLS_DEFAULT[k]);
+  return {
+    sitio_web_menudeo: pick("sitio_web_menudeo"),
+    ubicacion_taxco_maps: pick("ubicacion_taxco_maps"),
+    politicas_manual_pdf: pick("politicas_manual_pdf"),
+  };
+}
 
 export async function consultarLiveActivo(): Promise<LiveInfo> {
   const supabase = createAdminClient();
@@ -68,6 +102,7 @@ export async function consultarLiveActivo(): Promise<LiveInfo> {
       ? {
           id: elegido.id as number,
           fecha: elegido.fecha_inicio as string,
+          fecha_fin: elegido.fecha_fin as string,
           red: elegido.red_social as string,
           codigo: (elegido.codigo_descuento as string | null) ?? null,
           descripcion: (elegido.descripcion_promo as string | null) ?? null,
@@ -93,9 +128,11 @@ export type EnrichedMetadata = {
   es_horario_habil: boolean;
   timestamp: string;
   live: LiveInfo;
+  urls: SirenaUrls;
+  live_tiempo_restante_min: number | null;
 };
 
-export function enrichMetadata(live: LiveInfo): EnrichedMetadata {
+export function enrichMetadata(live: LiveInfo, urls: SirenaUrls): EnrichedMetadata {
   const now = new Date();
   const formatter = new Intl.DateTimeFormat("es-MX", {
     timeZone: "America/Mexico_City",
@@ -121,11 +158,21 @@ export function enrichMetadata(live: LiveInfo): EnrichedMetadata {
   );
   const esDiaHabil = !["Sat", "Sun"].includes(dow);
   const esHoraHabil = hour >= 10 && hour < 18;
+  let liveTiempoRestanteMin: number | null = null;
+  if (live.hay_live_ahora && live.proximo_live?.fecha_fin) {
+    const fin = new Date(live.proximo_live.fecha_fin).getTime();
+    const ahora = now.getTime();
+    if (fin > ahora) {
+      liveTiempoRestanteMin = Math.round((fin - ahora) / 60000);
+    }
+  }
   return {
     hora_formateada: formatter.format(now),
     es_horario_habil: esDiaHabil && esHoraHabil,
     timestamp: now.toISOString(),
     live,
+    urls,
+    live_tiempo_restante_min: liveTiempoRestanteMin,
   };
 }
 

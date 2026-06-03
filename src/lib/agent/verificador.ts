@@ -106,6 +106,19 @@ function demoVerificador(
   const live = (metadata as { live?: Record<string, unknown> } | undefined)?.live;
   const hayLiveAhora = !!live?.hay_live_ahora;
 
+  // ¿Ya mencionamos el live en mensajes salientes recientes?
+  // Escaneamos los últimos 5 mensajes salientes.
+  const mensajesPrevios =
+    (contextoLead as { ultimos_mensajes?: Array<Record<string, unknown>> } | undefined)
+      ?.ultimos_mensajes ?? [];
+  const liveYaMencionado = mensajesPrevios
+    .filter((msg) => msg.direccion === "saliente")
+    .slice(-5)
+    .some((msg) => {
+      const t = String(msg.texto ?? "").toLowerCase();
+      return /en vivo|live ahora|estamos en vivo|transmisi[oó]n/.test(t);
+    });
+
   // Helper que aplica mencionar_live_activo si hay live ahora,
   // salvo en casos donde distraería (reclamos, handoffs).
   const withLive = (
@@ -117,6 +130,9 @@ function demoVerificador(
       ...out,
       contexto_clave: { ...out.contexto_clave, menciona_live: true },
       instrucciones_tono: { ...out.instrucciones_tono, mencionar_live_activo: true },
+      razonamiento_breve: liveYaMencionado
+        ? `${out.razonamiento_breve} · live ya mencionado en turno previo, solo recordar tiempo`
+        : out.razonamiento_breve,
     };
   };
 
@@ -307,6 +323,121 @@ function demoVerificador(
       razonamiento_breve: `[demo] Envíos con origen ${mencionaInternacional ? "internacional" : "nacional"} → FAQ #${idImagen}`,
     }, true);
   }
+  // VISITA PRESENCIAL en Taxco (R5)
+  if (
+    /visit[oa]?r?|pasar por|ir a su|conocer el local|el local|presencial|f[ií]sicamente|donde est[aá]n|ubicaci[oó]n|direcci[oó]n|tienda f[ií]sica/.test(
+      m,
+    )
+  ) {
+    const sabado = /s[áa]bado|sabados|fin de semana/.test(m);
+    const entresemana = /entre semana|lunes|martes|mi[eé]rcoles|jueves|viernes|lun |mar |mi[eé] |jue |vie |entresemana/.test(m);
+    if (sabado || entresemana) {
+      return withLive({
+        ...FALLBACK,
+        _demo: true,
+        intencion_primaria: "visita_presencial",
+        confianza: 0.9,
+        rama_sugerida: "R5",
+        accion_recomendada: {
+          tool_principal: "agendar_visita_taxco",
+          parametros: {
+            dia: sabado ? "sabado" : "entresemana",
+            texto_acompanante: sabado
+              ? "¡Perfecto! Aquí va nuestra ubicación los sábados 💕"
+              : "¡Va, linda! Aquí te paso nuestra ubicación de lunes a viernes 💗",
+          },
+          seguimiento_post: "ninguno",
+        },
+        instrucciones_tono: {
+          ...FALLBACK.instrucciones_tono,
+          registro: "calido_nueva",
+        },
+        razonamiento_breve: `[demo] Visita presencial — día ${sabado ? "sábado" : "entresemana"}`,
+      }, true);
+    }
+    // Sin día → preguntar primero
+    return withLive({
+      ...FALLBACK,
+      _demo: true,
+      intencion_primaria: "visita_presencial",
+      confianza: 0.85,
+      rama_sugerida: "R5",
+      accion_recomendada: {
+        tool_principal: "responder_texto_simple",
+        parametros: {},
+        seguimiento_post: "preguntar_dia_visita",
+      },
+      instrucciones_tono: {
+        ...FALLBACK.instrucciones_tono,
+        registro: "calido_nueva",
+        longitud_maxima_palabras: 40,
+      },
+      razonamiento_breve: "[demo] Visita presencial — falta día, preguntar entresemana o sábado",
+    }, true);
+  }
+
+  // INTERÉS POR LAS TRANSMISIONES / LIVES (FAQ #26)
+  // OJO: distinto a "estoy comprando en vivo ahora mismo" (R4).
+  if (
+    /transmisi[oó]n|transmisiones|los lives|los vivos|hacen lives|hacen vivos|cu[áa]ndo (es|son) (el|los) (live|vivo|transmisi)|qu[eé] d[ií]a (hay|son|hacen) (live|vivo|transmisi)|c[oó]mo (es|son|funcionan) (el|los) (live|vivo|transmisi)|horario.*(live|vivo|transmisi)/.test(
+      m,
+    )
+  ) {
+    return withLive({
+      ...FALLBACK,
+      _demo: true,
+      intencion_primaria: "consultar_faq",
+      confianza: 0.9,
+      rama_sugerida: "R1",
+      accion_recomendada: {
+        tool_principal: "enviar_imagen_faq",
+        parametros: {
+          id_imagen: 26,
+          texto_acompanante: "¡Claro linda! Aquí te paso el horario de nuestras transmisiones 💗",
+        },
+        seguimiento_post: "ofrecer_handoff_nat_eli",
+      },
+      instrucciones_tono: {
+        ...FALLBACK.instrucciones_tono,
+        registro: "calido_nueva",
+        longitud_maxima_palabras: 60,
+      },
+      razonamiento_breve: "[demo] Interés en transmisiones → FAQ #26 + ofrecer handoff Nat/Eli",
+    });
+  }
+
+  // MENUDEO (R3) — quiere una pieza o pieza suelta
+  if (
+    /\buna pieza\b|\bsolo una\b|\buna sola\b|\bindividual\b|menudeo|para m[íi]( la)?|no para revender|no es para revender|no quiero el cat[aá]logo|comprar.*una/.test(
+      m,
+    )
+  ) {
+    return withLive({
+      ...FALLBACK,
+      _demo: true,
+      intencion_primaria: "comprar_menudeo",
+      confianza: 0.88,
+      rama_sugerida: "R3",
+      contexto_clave: {
+        ...FALLBACK.contexto_clave,
+        senal_compra: "alta",
+      },
+      accion_recomendada: {
+        tool_principal: "enviar_sitio_menudeo",
+        parametros: {
+          texto_acompanante:
+            "¡Claro linda! Para piezas sueltas mejor échale ojo a la página, ahí ves todo el catálogo y pides directo 💗",
+        },
+        seguimiento_post: "ninguno",
+      },
+      instrucciones_tono: {
+        ...FALLBACK.instrucciones_tono,
+        registro: "calido_nueva",
+      },
+      razonamiento_breve: "[demo] Menudeo (R3) → sitio web",
+    });
+  }
+
   if (/grupo|comunidad/.test(m)) {
     return withLive({
       ...FALLBACK,

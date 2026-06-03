@@ -86,7 +86,17 @@ function demoAgenteText(input: {
     const live = (input.metadata.live ?? {}) as Record<string, unknown>;
     const proximo = live.proximo_live as Record<string, unknown> | null;
     const red = (proximo?.red as string) ?? "Facebook";
+    const minRestantes = input.metadata.live_tiempo_restante_min as number | null;
+    const yaMencionado = /live ya mencionado/i.test(
+      input.verificador.razonamiento_breve ?? "",
+    );
+
     if (live.hay_live_ahora) {
+      // Si ya se mencionó antes, solo recordar el tiempo restante.
+      if (yaMencionado && minRestantes && minRestantes > 0) {
+        return `${baseTexto}\n\nPor cierto, todavía nos quedan como ${minRestantes} min de live 💕`;
+      }
+      // Primera mención: anuncio completo
       return `${baseTexto}\n\n¡Ay y aprovecho para contarte que estamos en vivo AHORA MISMO en ${capitalizar(red)}! 🎥✨ Si quieres apartar piezas en el live, te ayudo con eso 💕`;
     }
     if (live.hay_live_hoy) {
@@ -186,14 +196,30 @@ Cuéntame qué te gustó cuando te des una vuelta 💕`;
         return `¡Perfecto, linda! 🌊 Aquí te paso la info de envíos a México 💗`;
       if (idImg === 18)
         return `¡Va! 💕 Te paso la info de envíos internacionales ✨`;
+      if (idImg === 26)
+        return `¡Claro linda! Aquí te paso el horario de nuestras transmisiones 💗\n\nSi te interesa abrir carrito para apartar piezas en alguno de los lives, te puedo conectar con Nat o Eli para que te ayuden 💕`;
       return `Te paso la info que necesitas, linda 💗 ¿Te quedó claro o tienes otra dudita?`;
     }
     case "invitar_grupo":
       return `¡Qué padre que te animes! 💗 Aquí va el link del grupo de mayoreo. Cuando lo abras manda tu solicitud y Mar la acepta en cuanto la vea ✨`;
     case "handoff_asesora":
       return `Te paso con una asesora ahora mismo — ella te atiende en breve 💎`;
+    case "enviar_sitio_menudeo":
+      return `¡Claro linda! Para piezas sueltas mejor échale ojo a la página, ahí ves todo el catálogo y pides directo 💗`;
+    case "agendar_visita_taxco": {
+      const dia = input.verificador.accion_recomendada.parametros.dia as string | undefined;
+      return dia === "sabado"
+        ? `¡Perfecto! Aquí va nuestra ubicación los sábados 💕`
+        : `¡Va, linda! Aquí te paso nuestra ubicación de lunes a viernes 💗`;
+    }
     case "responder_texto_simple":
-    default:
+    default: {
+      // Si el seguimiento es "preguntar_dia_visita", pregunta el día
+      const seg = input.verificador.accion_recomendada.seguimiento_post;
+      if (seg === "preguntar_dia_visita") {
+        return `¡Qué padre que nos quieras visitar, linda! 💗 Cuéntame, ¿piensas venir entre semana (lunes a viernes) o un sábado? Para pasarte la ubicación correcta ✨`;
+      }
       return `Cuéntame un poquito más, linda 💗 ¿Qué buscas exactamente? Así te ayudo mejor.`;
+    }
   }
 }
