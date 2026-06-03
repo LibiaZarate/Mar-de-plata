@@ -6,6 +6,7 @@ import {
   KeyRound,
   ExternalLink,
   Megaphone,
+  Clock,
   type LucideIcon,
 } from "lucide-react";
 
@@ -17,6 +18,12 @@ type Card = {
 };
 
 const cards: Card[] = [
+  {
+    href: "/configuracion/seguimientos",
+    title: "Seguimientos automáticos",
+    description: "Plantillas, cola pendiente y disparo manual de los mensajes de re-engagement (lead frío, post-compra, depósito, reactivación).",
+    Icon: Clock,
+  },
   {
     href: "/configuracion/meta-ads",
     title: "Meta Marketing API",

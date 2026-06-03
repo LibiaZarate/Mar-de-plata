@@ -9,6 +9,7 @@ import {
   Image as ImageIcon,
   RotateCcw,
   ArrowRight,
+  Clock,
 } from "lucide-react";
 import Link from "next/link";
 import { mutate } from "swr";
@@ -227,6 +228,7 @@ export function Playground() {
                 Enviar
               </button>
             </div>
+            <SeguimientosBoton numero={numero} onAfter={() => historyRes.mutate()} />
           </div>
         </section>
 
@@ -653,5 +655,99 @@ function ImagePreview({ url, caption }: { url: string; caption?: string }) {
         </div>
       )}
     </a>
+  );
+}
+
+function SeguimientosBoton({
+  numero,
+  onAfter,
+}: {
+  numero: string;
+  onAfter: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function programar(min: number) {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await fetch("/api/seguimientos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          numero_whatsapp: numero,
+          tipo: "prueba_simulador",
+          delay_min: min,
+        }),
+      });
+      const d = await r.json();
+      setMsg(d.ok ? `Programado a ${min} min ✓` : `Error: ${d.error}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function ejecutar() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await fetch("/api/cron/seguimientos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "simulator",
+          numero_whatsapp: numero,
+          lookahead_min: 60 * 48,
+        }),
+      });
+      const d = await r.json();
+      if (!d.ok) {
+        setMsg(`Error: ${d.error ?? "?"}`);
+        return;
+      }
+      const enviados = d.procesados.filter(
+        (p: { resultado: string }) => p.resultado === "enviado",
+      ).length;
+      setMsg(`Disparados ${enviados}/${d.procesados.length} pendientes`);
+      onAfter();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded border border-foreground/15 bg-cream-50 px-3 py-2 flex items-center gap-2 flex-wrap text-[11px]">
+      <Clock className="h-3 w-3 text-foreground/55" />
+      <span className="text-foreground/65">Seguimientos:</span>
+      <button
+        onClick={() => programar(5)}
+        disabled={busy || !numero}
+        className="px-2 py-1 rounded border border-foreground/15 hover:bg-cream-100 disabled:opacity-40"
+      >
+        + en 5 min
+      </button>
+      <button
+        onClick={() => programar(60 * 24)}
+        disabled={busy || !numero}
+        className="px-2 py-1 rounded border border-foreground/15 hover:bg-cream-100 disabled:opacity-40"
+      >
+        + en 24 h
+      </button>
+      <button
+        onClick={ejecutar}
+        disabled={busy || !numero}
+        className="px-2 py-1 rounded border border-sage-300 bg-sage-50 hover:bg-sage-100 text-sage-600 disabled:opacity-40"
+      >
+        ▶ Ejecutar pendientes (sim)
+      </button>
+      <a
+        href="/configuracion/seguimientos"
+        className="text-foreground/55 hover:text-foreground underline ml-auto"
+      >
+        ver cola
+      </a>
+      {msg && <span className="text-foreground/75 w-full">{msg}</span>}
+    </div>
   );
 }
