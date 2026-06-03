@@ -4,10 +4,25 @@
 
 import { chat, isDemoMode, MODELS } from "./openrouter";
 import {
-  SIRENA_SYSTEM_PROMPT,
+  buildSirenaSystemPrompt,
   buildAgenteUserMessage,
+  SIRENA_REDES_DEFAULT,
 } from "./prompts/agente_sirena";
 import type { VerificadorOutput } from "./verificador";
+import { getSecret } from "@/lib/secrets";
+
+async function resolveRedes() {
+  const [instagram, facebook, tiktok] = await Promise.all([
+    getSecret("redes_instagram_url"),
+    getSecret("redes_facebook_url"),
+    getSecret("redes_tiktok_url"),
+  ]);
+  return {
+    instagram: instagram || SIRENA_REDES_DEFAULT.instagram,
+    facebook: facebook || SIRENA_REDES_DEFAULT.facebook,
+    tiktok: tiktok || SIRENA_REDES_DEFAULT.tiktok,
+  };
+}
 
 export type AgenteOutput = {
   texto: string;
@@ -21,12 +36,15 @@ export async function runAgenteMadre(input: {
   metadata: Record<string, unknown>;
   yaPagoDeposito: boolean;
 }): Promise<AgenteOutput> {
+  const redes = await resolveRedes();
+
   if (isDemoMode()) {
     return {
       texto: demoAgenteText({
         verificador: input.verificador,
         mensajeActual: input.mensajeActual,
         contextoLead: input.contextoLead,
+        redes,
       }),
       _demo: true,
     };
@@ -43,7 +61,7 @@ export async function runAgenteMadre(input: {
   const resp = await chat({
     model: MODELS.agente,
     messages: [
-      { role: "system", content: SIRENA_SYSTEM_PROMPT },
+      { role: "system", content: buildSirenaSystemPrompt(redes) },
       { role: "user", content: userMsg },
     ],
     temperature: 0.4,
@@ -58,6 +76,7 @@ function demoAgenteText(input: {
   verificador: VerificadorOutput;
   mensajeActual: string;
   contextoLead: Record<string, unknown>;
+  redes: typeof SIRENA_REDES_DEFAULT;
 }): string {
   const tool = input.verificador.accion_recomendada.tool_principal;
   const estado = input.contextoLead.estado_actual as Record<string, unknown> | undefined;
@@ -96,9 +115,9 @@ function demoAgenteText(input: {
   if (preguntaRedes && tool === "responder_texto_simple") {
     return `¡Claro linda! Échale ojo a nuestras redes, ahí ves muchas piezas y clientas felices 💗✨
 
-Instagram: https://www.instagram.com/mardeplatataxco/
-Facebook: https://www.facebook.com/mardeplatataxco/
-TikTok: https://www.tiktok.com/@mardeplatataxco
+Instagram: ${input.redes.instagram}
+Facebook: ${input.redes.facebook}
+TikTok: ${input.redes.tiktok}
 
 Cuéntame qué te gustó cuando te des una vuelta 💕`;
   }

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
-import { Save } from "lucide-react";
+import { Save, Check, AlertCircle } from "lucide-react";
 
 const KEY = "/api/dashboard/config";
 const fetcher = (url: string) => fetch(url, { cache: "no-store" }).then((r) => r.json());
@@ -35,21 +35,57 @@ export function SistemaCrud() {
 
   const map = new Map(items.map((r) => [r.clave, r]));
   const [edits, setEdits] = useState<Record<string, string>>({});
+  const [status, setStatus] = useState<
+    Record<string, { state: "saving" | "ok" | "err"; msg?: string }>
+  >({});
 
   async function save(clave: string) {
     const valor = edits[clave] ?? map.get(clave)?.valor ?? "";
     const desc = CLAVES_CONOCIDAS.find(([k]) => k === clave)?.[1] ?? null;
-    const r = await fetch(KEY, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clave, valor, descripcion: desc }),
-    });
-    const d = await r.json();
-    if (!d.ok) return alert(d.error || "Error");
-    const next = { ...edits };
-    delete next[clave];
-    setEdits(next);
-    mutate(KEY);
+    setStatus((s) => ({ ...s, [clave]: { state: "saving" } }));
+    try {
+      const r = await fetch(KEY, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clave, valor, descripcion: desc }),
+      });
+      const d = await r.json();
+      if (!d.ok) {
+        setStatus((s) => ({
+          ...s,
+          [clave]: { state: "err", msg: d.error || `HTTP ${r.status}` },
+        }));
+        return;
+      }
+      // Verificar leyendo de vuelta — confirma que llegó a la DB.
+      const verify = await fetch(`${KEY}?_=${Date.now()}`, { cache: "no-store" }).then((x) => x.json());
+      const persisted = (verify.items as Row[] | undefined)?.find((r) => r.clave === clave);
+      if (!persisted || persisted.valor !== valor) {
+        setStatus((s) => ({
+          ...s,
+          [clave]: { state: "err", msg: "Supabase no devolvió el valor guardado" },
+        }));
+        return;
+      }
+      const next = { ...edits };
+      delete next[clave];
+      setEdits(next);
+      mutate(KEY);
+      setStatus((s) => ({ ...s, [clave]: { state: "ok" } }));
+      setTimeout(() => {
+        setStatus((s) => {
+          if (s[clave]?.state !== "ok") return s;
+          const n = { ...s };
+          delete n[clave];
+          return n;
+        });
+      }, 2500);
+    } catch (e) {
+      setStatus((s) => ({
+        ...s,
+        [clave]: { state: "err", msg: (e as Error).message },
+      }));
+    }
   }
 
   return (
@@ -89,14 +125,33 @@ export function SistemaCrud() {
                 placeholder={row ? "" : "(sin valor)"}
                 className="input"
               />
-              <button
-                onClick={() => save(clave)}
-                disabled={!changed && !!row}
-                className="text-[12px] px-3 py-1.5 rounded border border-foreground/20 bg-cream-50 hover:bg-cream-100 disabled:opacity-40 inline-flex items-center"
-              >
-                <Save className="h-3.5 w-3.5 mr-1" />
-                {row ? "Guardar" : "Crear"}
-              </button>
+              <div className="flex flex-col gap-1">
+                <button
+                  onClick={() => save(clave)}
+                  disabled={(!changed && !!row) || status[clave]?.state === "saving"}
+                  className="text-[12px] px-3 py-1.5 rounded border border-foreground/20 bg-cream-50 hover:bg-cream-100 disabled:opacity-40 inline-flex items-center justify-center"
+                >
+                  {status[clave]?.state === "saving" ? (
+                    <>guardando…</>
+                  ) : status[clave]?.state === "ok" ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 mr-1 text-sage-600" />
+                      <span className="text-sage-600">guardado</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-3.5 w-3.5 mr-1" />
+                      {row ? "Guardar" : "Crear"}
+                    </>
+                  )}
+                </button>
+                {status[clave]?.state === "err" && (
+                  <div className="text-[10px] text-rosey-500 flex items-start gap-1 leading-tight">
+                    <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                    <span className="break-all">{status[clave].msg}</span>
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}

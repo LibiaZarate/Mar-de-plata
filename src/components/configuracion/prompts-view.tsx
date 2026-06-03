@@ -1,5 +1,7 @@
 import { VERIFICADOR_PROMPT } from "@/lib/agent/prompts/verificador";
-import { SIRENA_SYSTEM_PROMPT } from "@/lib/agent/prompts/agente_sirena";
+import { buildSirenaSystemPrompt } from "@/lib/agent/prompts/agente_sirena";
+
+const SIRENA_SYSTEM_PROMPT = buildSirenaSystemPrompt();
 
 export function PromptsView() {
   return (

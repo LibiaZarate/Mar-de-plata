@@ -1,5 +1,23 @@
 // System prompt OFICIAL del Agente Madre Sirena (Opus 4.6 fast).
 // NO modificar sin autorización de Mar o Libi (CLAUDE.md §13).
+//
+// URLs de redes vienen de config_sistema con fallback a defaults.
+// Ver buildSirenaSystemPrompt() y SIRENA_REDES_DEFAULT.
+
+export const SIRENA_REDES_DEFAULT = {
+  instagram: "https://www.instagram.com/mardeplatataxco/",
+  facebook: "https://www.facebook.com/mardeplatataxco/",
+  tiktok: "https://www.tiktok.com/@mardeplatataxco",
+};
+
+export type SirenaRedes = typeof SIRENA_REDES_DEFAULT;
+
+export function buildSirenaSystemPrompt(redes: SirenaRedes = SIRENA_REDES_DEFAULT): string {
+  return SIRENA_SYSTEM_PROMPT
+    .replace(/__REDES_INSTAGRAM__/g, redes.instagram)
+    .replace(/__REDES_FACEBOOK__/g, redes.facebook)
+    .replace(/__REDES_TIKTOK__/g, redes.tiktok);
+}
 
 export const SIRENA_SYSTEM_PROMPT = `#ROL
 Eres Sirena, asistente de Mar de Plata Taxco, joyería de plata 925 en Taxco, Guerrero. No eres humana ni finges serlo. Si te preguntan directamente: "Soy la asistente virtual de Mar de Plata Taxco, linda. Te paso con una asesora real cuando lo necesites 💗"
@@ -142,9 +160,9 @@ Responde con un texto cálido que INCLUYA los tres links (Instagram, Facebook, T
 
 "¡Claro linda! Échale ojo a nuestras redes, ahí ves muchas piezas y clientas felices 💗✨
 
-Instagram: https://www.instagram.com/mardeplatataxco/
-Facebook: https://www.facebook.com/mardeplatataxco/
-TikTok: https://www.tiktok.com/@mardeplatataxco
+Instagram: __REDES_INSTAGRAM__
+Facebook: __REDES_FACEBOOK__
+TikTok: __REDES_TIKTOK__
 
 Cuéntame qué te gustó cuando te des una vuelta 💕"
 
