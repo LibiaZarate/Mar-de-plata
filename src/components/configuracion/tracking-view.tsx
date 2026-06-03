@@ -76,6 +76,7 @@ export function TrackingView() {
   const error = data && !data.ok ? data.error : null;
 
   const numeroLimpio = whatsappNegocio?.replace(/\D/g, "") ?? "";
+  const numeroParaLink = normalizarTelefono(numeroLimpio);
   const numeroValidacion = validarWhatsapp(numeroLimpio);
 
   return (
@@ -133,7 +134,7 @@ export function TrackingView() {
               <div className="label-xs">Número que se va a usar en los links</div>
               <div className="mt-1 flex items-center gap-3 flex-wrap">
                 <code className="font-mono text-[15px] text-foreground bg-cream-100 px-2 py-1 rounded">
-                  +{numeroLimpio || "—"}
+                  +{numeroParaLink || "—"}
                 </code>
                 <span
                   className={cn(
@@ -146,6 +147,13 @@ export function TrackingView() {
                   {numeroValidacion.ok ? "formato válido" : numeroValidacion.msg}
                 </span>
               </div>
+              {numeroParaLink !== numeroLimpio && (
+                <div className="text-[11px] text-foreground/65 mt-2">
+                  En <code>config_sistema</code> tienes <code>+{numeroLimpio}</code>, pero
+                  Meta dejó de aceptar el &ldquo;1&rdquo; después del 52 para móviles MX.
+                  Los links se generan con <code>+{numeroParaLink}</code> automáticamente.
+                </div>
+              )}
               {!numeroValidacion.ok && (
                 <div className="text-[12px] text-foreground/70 mt-2 max-w-2xl">
                   {numeroValidacion.detalle}{" "}
@@ -156,9 +164,9 @@ export function TrackingView() {
                 </div>
               )}
             </div>
-            {numeroLimpio && (
+            {numeroParaLink && (
               <a
-                href={`https://api.whatsapp.com/send?phone=${numeroLimpio}`}
+                href={`https://api.whatsapp.com/send?phone=${numeroParaLink}`}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded border border-foreground/20 bg-cream-50 hover:bg-cream-100"
@@ -291,6 +299,16 @@ export function TrackingView() {
   );
 }
 
+// Meta dejó de aceptar el "1" después del 52 para móviles MX
+// en sus Click-to-Chat. Si el número guardado tiene ese formato
+// viejo (521 + 10 dígitos = 13), lo normalizamos a 52 + 10.
+function normalizarTelefono(digitos: string): string {
+  if (digitos.startsWith("521") && digitos.length === 13) {
+    return "52" + digitos.slice(3);
+  }
+  return digitos;
+}
+
 function validarWhatsapp(digitos: string): {
   ok: boolean;
   msg: string;
@@ -313,16 +331,10 @@ function validarWhatsapp(digitos: string): {
       detalle: "Demasiado largo. Revisa que no hayas pegado dos números juntos.",
     };
   }
-  // Para México: si empieza con 521 (formato viejo con "1" de móvil),
-  // wa.me sí lo acepta pero algunos números no responden bien.
-  // El formato actual recomendado por Meta es 52 + 10 dígitos sin el 1.
+  // Formato MX viejo (521 + 10 dígitos): lo normalizamos al vuelo
+  // al construir el link, así que lo validamos como OK.
   if (digitos.startsWith("521") && digitos.length === 13) {
-    return {
-      ok: true,
-      msg: "formato MX antiguo (con 1)",
-      detalle:
-        "Si los links abren WhatsApp pero dicen 'no encontrado', borra el 1 después del 52.",
-    };
+    return { ok: true, msg: "formato OK (normalizado)", detalle: "" };
   }
   if (digitos.startsWith("52") && digitos.length === 12) {
     return { ok: true, msg: "formato MX correcto", detalle: "" };
@@ -504,7 +516,7 @@ function SourceCard({
   const [copied, setCopied] = useState(false);
   const texto = `${source.texto} [src:${source.codigo}]`;
   const link = whatsappNegocio
-    ? `https://api.whatsapp.com/send?phone=${whatsappNegocio.replace(/\D/g, "")}&text=${encodeURIComponent(texto)}`
+    ? `https://api.whatsapp.com/send?phone=${normalizarTelefono(whatsappNegocio.replace(/\D/g, ""))}&text=${encodeURIComponent(texto)}`
     : null;
 
   function copyLink() {
@@ -557,7 +569,7 @@ function CampanaCard({
   const [copied, setCopied] = useState(false);
   const texto = `${campana.texto} [src:${campana.codigo}]`;
   const link = whatsappNegocio
-    ? `https://api.whatsapp.com/send?phone=${whatsappNegocio.replace(/\D/g, "")}&text=${encodeURIComponent(texto)}`
+    ? `https://api.whatsapp.com/send?phone=${normalizarTelefono(whatsappNegocio.replace(/\D/g, ""))}&text=${encodeURIComponent(texto)}`
     : null;
 
   function copyLink() {

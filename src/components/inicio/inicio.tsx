@@ -13,6 +13,7 @@ import {
 import { cn, formatMxn } from "@/lib/utils";
 import { Tendencias } from "./tendencias";
 import { Atribucion } from "./atribucion";
+import { MetaAdsBloque } from "./meta-ads-bloque";
 
 const RANGE_LABELS: Record<DashboardRange, string> = {
   hoy: "Hoy",
@@ -45,6 +46,7 @@ export function Inicio() {
       <BloqueB range={range} />
       <BloqueC range={range} />
       <Tendencias />
+      <MetaAdsBloque />
       <Atribucion />
     </div>
   );
