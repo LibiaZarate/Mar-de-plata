@@ -158,7 +158,7 @@ export function TrackingView() {
             </div>
             {numeroLimpio && (
               <a
-                href={`https://wa.me/${numeroLimpio}`}
+                href={`https://api.whatsapp.com/send?phone=${numeroLimpio}`}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded border border-foreground/20 bg-cream-50 hover:bg-cream-100"
@@ -504,7 +504,7 @@ function SourceCard({
   const [copied, setCopied] = useState(false);
   const texto = `${source.texto} [src:${source.codigo}]`;
   const link = whatsappNegocio
-    ? `https://wa.me/${whatsappNegocio.replace(/\D/g, "")}?text=${encodeURIComponent(texto)}`
+    ? `https://api.whatsapp.com/send?phone=${whatsappNegocio.replace(/\D/g, "")}&text=${encodeURIComponent(texto)}`
     : null;
 
   function copyLink() {
@@ -557,7 +557,7 @@ function CampanaCard({
   const [copied, setCopied] = useState(false);
   const texto = `${campana.texto} [src:${campana.codigo}]`;
   const link = whatsappNegocio
-    ? `https://wa.me/${whatsappNegocio.replace(/\D/g, "")}?text=${encodeURIComponent(texto)}`
+    ? `https://api.whatsapp.com/send?phone=${whatsappNegocio.replace(/\D/g, "")}&text=${encodeURIComponent(texto)}`
     : null;
 
   function copyLink() {
