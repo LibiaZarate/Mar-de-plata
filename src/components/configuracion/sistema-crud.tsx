@@ -8,7 +8,7 @@ const KEY = "/api/dashboard/config";
 const fetcher = (url: string) => fetch(url, { cache: "no-store" }).then((r) => r.json());
 
 const CLAVES_CONOCIDAS = [
-  ["whatsapp_negocio", "Número del WhatsApp del negocio (sin +, con lada, ej. 5217771234567)"],
+  ["whatsapp_negocio", "WhatsApp del negocio · solo dígitos, con código de país. MX: 52 + 10 dígitos (ej. 527771234567, sin el 1 después del 52)"],
   ["link_grupo_abierto", "Link del grupo abierto de WhatsApp"],
   ["catalogo_pandora_url", "URL del catálogo Pandora (Canva)"],
   ["catalogo_taxco_url", "URL del catálogo Taxco artesanal"],

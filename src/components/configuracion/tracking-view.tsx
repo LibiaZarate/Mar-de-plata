@@ -75,6 +75,9 @@ export function TrackingView() {
   const campanas = camp?.campanas ?? [];
   const error = data && !data.ok ? data.error : null;
 
+  const numeroLimpio = whatsappNegocio?.replace(/\D/g, "") ?? "";
+  const numeroValidacion = validarWhatsapp(numeroLimpio);
+
   return (
     <div className="px-10 py-6 space-y-6">
       <div>
@@ -107,11 +110,63 @@ export function TrackingView() {
                 <code className="text-foreground">whatsapp_negocio</code> en{" "}
                 <a href="/configuracion/sistema" className="text-rosey-500 underline">
                   Configuración · Sistema
-                </a>{" "}
-                con el número del WhatsApp Business (solo dígitos, con lada, ej.{" "}
-                <code className="text-foreground">5217771234567</code>).
+                </a>
+                . Solo dígitos, con código de país. Para México:{" "}
+                <code className="text-foreground">527771234567</code> (52 + número de 10 dígitos).
               </p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {whatsappNegocio && (
+        <div
+          className={cn(
+            "rounded-lg border px-5 py-4",
+            numeroValidacion.ok
+              ? "border-sage-300 bg-sage-50/40"
+              : "border-ambr-300 bg-ambr-50",
+          )}
+        >
+          <div className="flex items-start gap-3 flex-wrap">
+            <div className="flex-1 min-w-0">
+              <div className="label-xs">Número que se va a usar en los links</div>
+              <div className="mt-1 flex items-center gap-3 flex-wrap">
+                <code className="font-mono text-[15px] text-foreground bg-cream-100 px-2 py-1 rounded">
+                  +{numeroLimpio || "—"}
+                </code>
+                <span
+                  className={cn(
+                    "text-[11px] px-2 py-0.5 rounded",
+                    numeroValidacion.ok
+                      ? "bg-sage-100 text-sage-600"
+                      : "bg-ambr-100 text-ambr-600",
+                  )}
+                >
+                  {numeroValidacion.ok ? "formato válido" : numeroValidacion.msg}
+                </span>
+              </div>
+              {!numeroValidacion.ok && (
+                <div className="text-[12px] text-foreground/70 mt-2 max-w-2xl">
+                  {numeroValidacion.detalle}{" "}
+                  <a href="/configuracion/sistema" className="text-rosey-500 underline">
+                    Corrígelo en Sistema
+                  </a>
+                  .
+                </div>
+              )}
+            </div>
+            {numeroLimpio && (
+              <a
+                href={`https://wa.me/${numeroLimpio}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded border border-foreground/20 bg-cream-50 hover:bg-cream-100"
+              >
+                <ExternalLink className="h-3 w-3" />
+                Probar el número solo
+              </a>
+            )}
           </div>
         </div>
       )}
@@ -234,6 +289,52 @@ export function TrackingView() {
       </section>
     </div>
   );
+}
+
+function validarWhatsapp(digitos: string): {
+  ok: boolean;
+  msg: string;
+  detalle: string;
+} {
+  if (digitos.length === 0) {
+    return { ok: false, msg: "vacío", detalle: "Falta el número." };
+  }
+  if (digitos.length < 10) {
+    return {
+      ok: false,
+      msg: `solo ${digitos.length} dígitos`,
+      detalle: "Muy corto. Debe ser código de país + número (mínimo 11 dígitos en total).",
+    };
+  }
+  if (digitos.length > 15) {
+    return {
+      ok: false,
+      msg: `${digitos.length} dígitos (máx 15)`,
+      detalle: "Demasiado largo. Revisa que no hayas pegado dos números juntos.",
+    };
+  }
+  // Para México: si empieza con 521 (formato viejo con "1" de móvil),
+  // wa.me sí lo acepta pero algunos números no responden bien.
+  // El formato actual recomendado por Meta es 52 + 10 dígitos sin el 1.
+  if (digitos.startsWith("521") && digitos.length === 13) {
+    return {
+      ok: true,
+      msg: "formato MX antiguo (con 1)",
+      detalle:
+        "Si los links abren WhatsApp pero dicen 'no encontrado', borra el 1 después del 52.",
+    };
+  }
+  if (digitos.startsWith("52") && digitos.length === 12) {
+    return { ok: true, msg: "formato MX correcto", detalle: "" };
+  }
+  if (!digitos.startsWith("52") && digitos.length === 10) {
+    return {
+      ok: false,
+      msg: "falta código de país",
+      detalle: "Para México agrega 52 al inicio. Ej: 527771234567.",
+    };
+  }
+  return { ok: true, msg: "formato OK", detalle: "" };
 }
 
 function mapearCodigoANombre(codigo: string): string {
