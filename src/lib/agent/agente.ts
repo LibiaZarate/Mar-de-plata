@@ -44,6 +44,7 @@ export async function runAgenteMadre(input: {
         verificador: input.verificador,
         mensajeActual: input.mensajeActual,
         contextoLead: input.contextoLead,
+        metadata: input.metadata,
         redes,
       }),
       _demo: true,
@@ -73,6 +74,50 @@ export async function runAgenteMadre(input: {
 }
 
 function demoAgenteText(input: {
+  verificador: VerificadorOutput;
+  mensajeActual: string;
+  contextoLead: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  redes: typeof SIRENA_REDES_DEFAULT;
+}): string {
+  const baseTexto = demoAgenteTextBase(input);
+  // Si el Verificador marcó mencionar_live_activo, anexar la mención.
+  if (input.verificador.instrucciones_tono?.mencionar_live_activo) {
+    const live = (input.metadata.live ?? {}) as Record<string, unknown>;
+    const proximo = live.proximo_live as Record<string, unknown> | null;
+    const red = (proximo?.red as string) ?? "Facebook";
+    if (live.hay_live_ahora) {
+      return `${baseTexto}\n\n¡Ay y aprovecho para contarte que estamos en vivo AHORA MISMO en ${capitalizar(red)}! 🎥✨ Si quieres apartar piezas en el live, te ayudo con eso 💕`;
+    }
+    if (live.hay_live_hoy) {
+      const fecha = proximo?.fecha as string | undefined;
+      const hora = fecha ? formatearHora(fecha) : "más tarde";
+      return `${baseTexto}\n\nPor cierto, ¡hoy tenemos live a las ${hora} en ${capitalizar(red)}! 💗 Si quieres acompañarnos, te aviso ✨`;
+    }
+  }
+  return baseTexto;
+}
+
+function capitalizar(s: string): string {
+  if (!s) return s;
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+
+function formatearHora(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString("es-MX", {
+      timeZone: "America/Mexico_City",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  } catch {
+    return "más tarde";
+  }
+}
+
+function demoAgenteTextBase(input: {
   verificador: VerificadorOutput;
   mensajeActual: string;
   contextoLead: Record<string, unknown>;

@@ -67,7 +67,7 @@ export async function runVerificador(input: {
   metadata: unknown;
 }): Promise<VerificadorOutput> {
   if (isDemoMode()) {
-    return demoVerificador(input.mensajeActual, input.contextoLead);
+    return demoVerificador(input.mensajeActual, input.contextoLead, input.metadata);
   }
 
   const prompt = buildVerificadorPrompt(input);
@@ -97,8 +97,28 @@ export function parseVerificador(raw: string): VerificadorOutput {
 
 // Modo demo: clasificación determinística por palabras clave para que la
 // UI funcione sin OpenRouter. Cubre los escenarios principales.
-function demoVerificador(mensaje: string, contextoLead?: unknown): VerificadorOutput {
+function demoVerificador(
+  mensaje: string,
+  contextoLead?: unknown,
+  metadata?: unknown,
+): VerificadorOutput {
   const m = mensaje.toLowerCase();
+  const live = (metadata as { live?: Record<string, unknown> } | undefined)?.live;
+  const hayLiveAhora = !!live?.hay_live_ahora;
+
+  // Helper que aplica mencionar_live_activo si hay live ahora,
+  // salvo en casos donde distraería (reclamos, handoffs).
+  const withLive = (
+    out: VerificadorOutput,
+    excluir = false,
+  ): VerificadorOutput => {
+    if (!hayLiveAhora || excluir) return out;
+    return {
+      ...out,
+      contexto_clave: { ...out.contexto_clave, menciona_live: true },
+      instrucciones_tono: { ...out.instrucciones_tono, mencionar_live_activo: true },
+    };
+  };
 
   // Si el lead ya está en handoff, no sugerir handoff otra vez ni
   // disparar tools de contenido — acompañar con texto natural.
@@ -107,6 +127,7 @@ function demoVerificador(mensaje: string, contextoLead?: unknown): VerificadorOu
   const yaEnHandoff =
     !!estado && (estado.rama_activa === "handoff" || estado.requiere_handoff === true);
   if (yaEnHandoff) {
+    // En handoff: NO mencionar live, no distraer del contexto.
     return {
       ...FALLBACK,
       _demo: true,
@@ -130,7 +151,7 @@ function demoVerificador(mensaje: string, contextoLead?: unknown): VerificadorOu
   }
 
   if (/pandora/.test(m)) {
-    return {
+    return withLive({
       ...FALLBACK,
       _demo: true,
       intencion_primaria: "comprar_mayoreo_catalogo",
@@ -154,12 +175,12 @@ function demoVerificador(mensaje: string, contextoLead?: unknown): VerificadorOu
         longitud_maxima_palabras: 40,
       },
       razonamiento_breve: "[demo] Detección por keyword 'pandora'",
-    };
+    });
   }
 
-  // Tarjeta de crédito específicamente → FAQ #16
+  // Tarjeta de crédito específicamente → FAQ #16 (NO mencionar live: muy específico)
   if (/tarjeta|\bvisa\b|mastercard|\bamex\b|american express/.test(m)) {
-    return {
+    return withLive({
       ...FALLBACK,
       _demo: true,
       intencion_primaria: "consultar_faq",
@@ -178,12 +199,12 @@ function demoVerificador(mensaje: string, contextoLead?: unknown): VerificadorOu
         registro: "calido_nueva",
       },
       razonamiento_breve: "[demo] Pregunta por tarjeta → FAQ #16",
-    };
+    }, true);
   }
 
-  // Formas de pago genéricas (sin mencionar tarjeta) → FAQ #15
+  // Formas de pago genéricas (sin mencionar tarjeta) → FAQ #15 (NO live)
   if (/(forma|m[eé]todo|manera).*pag|c[oó]mo (puedo )?pag|d[oó]nde pago|pagos|abonar/.test(m)) {
-    return {
+    return withLive({
       ...FALLBACK,
       _demo: true,
       intencion_primaria: "consultar_faq",
@@ -202,7 +223,7 @@ function demoVerificador(mensaje: string, contextoLead?: unknown): VerificadorOu
         registro: "calido_nueva",
       },
       razonamiento_breve: "[demo] Pregunta formas de pago genéricas → FAQ #15",
-    };
+    }, true);
   }
 
   // Referencias / redes sociales → texto con los 3 links
@@ -211,7 +232,7 @@ function demoVerificador(mensaje: string, contextoLead?: unknown): VerificadorOu
       m,
     )
   ) {
-    return {
+    return withLive({
       ...FALLBACK,
       _demo: true,
       intencion_primaria: "consultar_faq",
@@ -229,7 +250,7 @@ function demoVerificador(mensaje: string, contextoLead?: unknown): VerificadorOu
       },
       razonamiento_breve:
         "[demo] Pregunta por referencias / redes → texto con links IG/FB/TikTok",
-    };
+    });
   }
   if (/env[íi]o|envios|env[ií]a|mandan|mandas/.test(m)) {
     // ¿Mencionó origen? (ciudad MX, "nacional", "internacional", país)
@@ -240,9 +261,9 @@ function demoVerificador(mensaje: string, contextoLead?: unknown): VerificadorOu
       m,
     );
 
-    // Sin origen: preguntar primero
+    // Sin origen: preguntar primero (NO live — pregunta específica)
     if (!mencionaNacional && !mencionaInternacional) {
-      return {
+      return withLive({
         ...FALLBACK,
         _demo: true,
         intencion_primaria: "consultar_faq",
@@ -260,7 +281,7 @@ function demoVerificador(mensaje: string, contextoLead?: unknown): VerificadorOu
         },
         razonamiento_breve:
           "[demo] Pregunta envíos sin origen — Sirena debe preguntar de dónde es (FAQ 17 vs 18)",
-      };
+      }, true);
     }
 
     // Con origen: mandar FAQ correspondiente
@@ -268,7 +289,7 @@ function demoVerificador(mensaje: string, contextoLead?: unknown): VerificadorOu
     const texto = mencionaInternacional
       ? "¡Va! 💕 Te paso la info de envíos internacionales ✨"
       : "¡Perfecto, linda! 🌊 Aquí te paso la info de envíos a México 💗";
-    return {
+    return withLive({
       ...FALLBACK,
       _demo: true,
       intencion_primaria: "consultar_faq",
@@ -284,10 +305,10 @@ function demoVerificador(mensaje: string, contextoLead?: unknown): VerificadorOu
         registro: "calido_nueva",
       },
       razonamiento_breve: `[demo] Envíos con origen ${mencionaInternacional ? "internacional" : "nacional"} → FAQ #${idImagen}`,
-    };
+    }, true);
   }
   if (/grupo|comunidad/.test(m)) {
-    return {
+    return withLive({
       ...FALLBACK,
       _demo: true,
       intencion_primaria: "comprar_mayoreo_grupo",
@@ -303,13 +324,13 @@ function demoVerificador(mensaje: string, contextoLead?: unknown): VerificadorOu
         registro: "calido_nueva",
       },
       razonamiento_breve: "[demo] Detección por keyword 'grupo'",
-    };
+    });
   }
-  return {
+  return withLive({
     ...FALLBACK,
     _demo: true,
     intencion_primaria: "conversacional_sin_accion",
     confianza: 0.7,
     razonamiento_breve: "[demo] Sin clasificación específica — respuesta abierta",
-  };
+  });
 }

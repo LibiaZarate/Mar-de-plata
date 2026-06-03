@@ -121,7 +121,10 @@ REGLAS GENERALES:
 3. Si detectas objeción, mención de competidor, intención fuerte de compra, o evento notable, agrégalo a eventos_detectados con {tipo: "...", detalle: "..."}.
 4. Si confianza < 0.6, forzar intencion_primaria='ambiguo' y tool_principal='responder_texto_simple'.
 5. Si el mensaje es ambiguo, devolver intencion_primaria='ambiguo' y accion_recomendada con responder_texto_simple + pregunta abierta.
-6. Si metadata.live.hay_live_ahora es true Y la clienta muestra intención de compra → sugiere rama R4 y mencionar_live_activo=true.
+6. Si metadata.live.hay_live_ahora es true:
+   - Si la clienta muestra intención de compra → sugiere rama R4 y mencionar_live_activo=true.
+   - Si la clienta saluda o hace conversación abierta (hola, buenas, ¿qué tal?, etc.) → mencionar_live_activo=true igual (que Sirena le avise que están en vivo).
+   - Única excepción: si es un reclamo, urgencia, o pregunta muy específica de FAQ no relacionada con el live (envíos, formas de pago) → mencionar_live_activo=false (no distraer del tema).
 7. Si la clienta pide hablar con humano, mencionar Profeco/fraude/denuncia/reclamo → tool_principal='handoff_asesora', prioridad='urgente', requiere_escalacion_mar=true. (Solo si NO está ya en handoff — ver regla crítica arriba.)
 8. Si la clienta pide diseño personalizado → tool_principal='handoff_asesora', motivo='personalizado'. (Solo si NO está ya en handoff.)
 
