@@ -164,6 +164,14 @@ export async function runFlowMadre(input: {
     );
   }
 
+  // ── Etiquetar lead según intent del Verificador ─────────
+  // Cuando alguien pregunta por pieza personalizada, taggeamos
+  // el lead para que la asesora sepa que tiene que revisar la
+  // imagen de referencia en la conversación.
+  if (verificador.intencion_primaria === "personalizado") {
+    await agregarEtiquetaLead(supabase, numero, "pieza_personalizada");
+  }
+
   // ── Paso 15: Agente Madre ───────────────────────────────
   const agente = await runAgenteMadre({
     verificador,
@@ -472,4 +480,25 @@ async function runHandoffGuardrailSteps(args: {
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+// Añade una etiqueta a leads.etiquetas (TEXT[]) sin duplicar.
+// PostgREST no soporta array_append directo así que leemos y
+// reescribimos en cliente.
+async function agregarEtiquetaLead(
+  supabase: ReturnType<typeof createAdminClient>,
+  numero: string,
+  etiqueta: string,
+): Promise<void> {
+  const { data } = await supabase
+    .from("leads")
+    .select("etiquetas")
+    .eq("numero_whatsapp", numero)
+    .maybeSingle();
+  const actuales = (data?.etiquetas as string[] | null) ?? [];
+  if (actuales.includes(etiqueta)) return;
+  await supabase
+    .from("leads")
+    .update({ etiquetas: [...actuales, etiqueta] })
+    .eq("numero_whatsapp", numero);
 }

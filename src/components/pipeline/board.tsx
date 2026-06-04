@@ -178,7 +178,9 @@ function LeadCard({ lead, adsMap }: { lead: Lead; adsMap?: AdsMap }) {
   const border = CANAL_BORDER[lead.canal_origen ?? ""] ?? "border-t-foreground/30";
   const tail = lead.numero_whatsapp.slice(-4);
   const displayName = lead.nombre?.trim() || `Sin nombre · ${tail}`;
-  const isTest = (lead.etiquetas ?? []).includes("playground");
+  const etiquetas = lead.etiquetas ?? [];
+  const isTest = etiquetas.includes("playground");
+  const piezaPersonalizada = etiquetas.includes("pieza_personalizada");
   const adInfo = lead.anuncio_id ? adsMap?.get(lead.anuncio_id) : undefined;
   // Si no tenemos el ad cacheado pero hay anuncio_id, mostramos el ID truncado.
   const adLabel = adInfo
@@ -234,6 +236,14 @@ function LeadCard({ lead, adsMap }: { lead: Lead; adsMap?: AdsMap }) {
         {lead.tipo === "menudeo" && <span className="pill-sky">Menudeo</span>}
         {lead.monto_acumulado > 0 && (
           <span className="pill-stone">{formatMxn(lead.monto_acumulado)}</span>
+        )}
+        {piezaPersonalizada && (
+          <span
+            className="text-[10px] font-medium px-1.5 py-0.5 rounded border border-lila-300 bg-lila-50 text-lila-500"
+            title="Cliente preguntó por pieza personalizada — revisar imagen de referencia en la conversación"
+          >
+            💎 Personalizada · revisar imagen
+          </span>
         )}
       </div>
       {next && (
