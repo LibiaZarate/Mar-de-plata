@@ -131,6 +131,7 @@ function demoAgenteTextBase(input: {
   verificador: VerificadorOutput;
   mensajeActual: string;
   contextoLead: Record<string, unknown>;
+  metadata: Record<string, unknown>;
   redes: typeof SIRENA_REDES_DEFAULT;
 }): string {
   const tool = input.verificador.accion_recomendada.tool_principal;
@@ -197,7 +198,9 @@ Cuéntame qué te gustó cuando te des una vuelta 💕`;
       if (idImg === 18)
         return `¡Va! 💕 Te paso la info de envíos internacionales ✨`;
       if (idImg === 26)
-        return `¡Claro linda! Aquí te paso el horario de nuestras transmisiones 💗\n\nSi te interesa abrir carrito para apartar piezas en alguno de los lives, te puedo conectar con Nat o Eli para que te ayuden 💕`;
+        return input.metadata.asesora_ofrecida_reciente
+          ? `¡Claro linda! Aquí te paso el horario de nuestras transmisiones 💗`
+          : `¡Claro linda! Aquí te paso el horario de nuestras transmisiones 💗\n\nSi te interesa abrir carrito para apartar piezas en alguno de los lives, te puedo conectar con Nat o Eli para que te ayuden 💕`;
       return `Te paso la info que necesitas, linda 💗 ¿Te quedó claro o tienes otra dudita?`;
     }
     case "invitar_grupo":
@@ -216,17 +219,26 @@ Cuéntame qué te gustó cuando te des una vuelta 💕`;
     default: {
       // Si el seguimiento es "preguntar_dia_visita", pregunta el día
       const seg = input.verificador.accion_recomendada.seguimiento_post;
+      // Cooldown: si Sirena ya ofreció asesora hace poco, no repetir
+      // la oferta en este turno (se siente robótico).
+      const ofrecidaReciente = !!input.metadata.asesora_ofrecida_reciente;
       if (seg === "preguntar_dia_visita") {
         return `¡Qué padre que nos quieras visitar, linda! 💗 Cuéntame, ¿piensas venir entre semana (lunes a viernes) o un sábado? Para pasarte la ubicación correcta ✨`;
       }
       if (seg === "info_personalizadas") {
-        return `Elaboramos piezas personalizadas dentro de un pedido de mayoreo mínimo de $1,500 MXN ✨ Si quieres, mándame una foto o imagen de la idea de la pieza para analizarla. Si te late, te puedo pasar con una de nuestras asesoras para coordinarlo, ¿quieres? 💎`;
+        return ofrecidaReciente
+          ? `Elaboramos piezas personalizadas dentro de un pedido de mayoreo mínimo de $1,500 MXN ✨ Si quieres, mándame una foto o imagen de la idea de la pieza para analizarla 💎`
+          : `Elaboramos piezas personalizadas dentro de un pedido de mayoreo mínimo de $1,500 MXN ✨ Si quieres, mándame una foto o imagen de la idea de la pieza para analizarla. Si te late, te puedo pasar con una de nuestras asesoras para coordinarlo, ¿quieres? 💎`;
       }
       if (seg === "ofrecer_handoff_pedido") {
-        return `¿Estás lista para armar tu pedido? Si sí, te puedo pasar con Nat o Eli para que te lo armen 💖 Si no, dime qué duda tienes y la resolvemos juntas.`;
+        return ofrecidaReciente
+          ? `¿Tienes alguna duda en mente o estás lista para armar tu pedido? 💗`
+          : `¿Estás lista para armar tu pedido? Si sí, te puedo pasar con Nat o Eli para que te lo armen 💖 Si no, dime qué duda tienes y la resolvemos juntas.`;
       }
       if (seg === "ofrecer_handoff_nat_eli") {
-        return `Si te interesa abrir carrito para apartar piezas en alguno de los lives, te puedo conectar con Nat o Eli. ¿Quieres que te pase con una de ellas? 💕`;
+        return ofrecidaReciente
+          ? `Échale ojo a nuestras transmisiones y cuando quieras participar, me dices 💕`
+          : `Si te interesa abrir carrito para apartar piezas en alguno de los lives, te puedo conectar con Nat o Eli. ¿Quieres que te pase con una de ellas? 💕`;
       }
       return `Cuéntame un poquito más, linda 💗 ¿Qué buscas exactamente? Así te ayudo mejor.`;
     }

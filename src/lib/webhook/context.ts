@@ -131,6 +131,7 @@ export type EnrichedMetadata = {
   live: LiveInfo;
   urls: SirenaUrls;
   live_tiempo_restante_min: number | null;
+  asesora_ofrecida_reciente: boolean;
 };
 
 export function enrichMetadata(live: LiveInfo, urls: SirenaUrls): EnrichedMetadata {
@@ -174,7 +175,27 @@ export function enrichMetadata(live: LiveInfo, urls: SirenaUrls): EnrichedMetada
     live,
     urls,
     live_tiempo_restante_min: liveTiempoRestanteMin,
+    // Esto lo rellena el flow después con el contexto del lead
+    asesora_ofrecida_reciente: false,
   };
+}
+
+// Escanea los últimos N mensajes salientes para detectar si Sirena
+// ya ofreció pasar con asesora hace poco. Se usa para evitar repetir
+// la oferta turno tras turno y que se sienta robótica.
+export function detectarOfertaAsesoraReciente(
+  ultimosMensajes: unknown,
+  ventanaSalientes = 3,
+): boolean {
+  const lista = (ultimosMensajes as Array<Record<string, unknown>> | undefined) ?? [];
+  return lista
+    .filter((msg) => msg.direccion === "saliente")
+    .slice(-ventanaSalientes)
+    .some((msg) =>
+      /te paso con|te puedo (pasar|conectar)|quieres que te (pase|conecte)|gustar[ií]a que te pase|te conecto con|pasarte con/i.test(
+        String(msg.texto ?? ""),
+      ),
+    );
 }
 
 export async function yaPagoDeposito(numero: string): Promise<boolean> {

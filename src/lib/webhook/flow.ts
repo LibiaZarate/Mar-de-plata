@@ -15,6 +15,7 @@ import { findOrCreateLead } from "./lead";
 import {
   consultarLiveActivo,
   resolveSirenaUrls,
+  detectarOfertaAsesoraReciente,
   obtenerContextoLead,
   enrichMetadata,
   yaPagoDeposito,
@@ -141,6 +142,9 @@ export async function runFlowMadre(input: {
     };
   }
   const metadata = enrichMetadata(live, urls);
+  metadata.asesora_ofrecida_reciente = detectarOfertaAsesoraReciente(
+    contexto.ultimos_mensajes,
+  );
   const pagoDeposito = await yaPagoDeposito(numero);
 
   // ── Paso 12 + 13: Verificador ────────────────────────────
