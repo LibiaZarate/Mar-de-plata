@@ -213,42 +213,90 @@ function demoVerificador(
     };
   }
 
-  // PIEZA PERSONALIZADA → texto con info + oferta de asesora (no auto-handoff)
+  // PIEZA PERSONALIZADA
+  // Comportamiento depende de si ya pasamos por catálogo + políticas:
+  // · Primera vez (sin políticas enviadas): acknowledge cálido +
+  //   mandar catálogos para que la clienta vea opciones.
+  // · Después de FAQs + políticas: mensaje del mínimo $1500 + pedir
+  //   foto + ofrecer asesora.
   if (
     /personalizad[ao]|dise[nñ]o (propio|m[ií]o|especial)|como esta foto|mandar.* foto|env[ií]ar.* imagen|igual a esta|r[eé]plica de esta|hac[eé]r.* pieza/.test(
       m,
     )
   ) {
+    const politicasYaEnviadas = !!estado?.politicas_enviadas;
+    if (politicasYaEnviadas) {
+      // Ya pasamos por catálogo y políticas → ahora sí el mensaje
+      // del mínimo $1500 con pedido de foto.
+      return withLive({
+        ...FALLBACK,
+        _demo: true,
+        intencion_primaria: "personalizado",
+        confianza: 0.92,
+        rama_sugerida: "R1",
+        contexto_clave: { ...FALLBACK.contexto_clave, senal_compra: "media" },
+        accion_recomendada: {
+          tool_principal: "responder_texto_simple",
+          parametros: {},
+          seguimiento_post: "info_personalizadas",
+        },
+        instrucciones_tono: {
+          ...FALLBACK.instrucciones_tono,
+          registro: "calido_nueva",
+          longitud_maxima_palabras: 90,
+        },
+        eventos_detectados: [
+          { tipo: "interes_personalizada", detalle: "Pregunta sobre personalizada después de FAQ — info $1500" },
+        ],
+        razonamiento_breve: "[demo] Personalizadas (post-FAQ) → mensaje del mínimo $1500 + foto + ofrecer asesora",
+      });
+    }
+    // Primera vez: mandar catálogos para que vea las opciones primero.
     return withLive({
       ...FALLBACK,
       _demo: true,
       intencion_primaria: "personalizado",
-      confianza: 0.9,
+      confianza: 0.88,
       rama_sugerida: "R1",
       contexto_clave: { ...FALLBACK.contexto_clave, senal_compra: "media" },
       accion_recomendada: {
-        tool_principal: "responder_texto_simple",
-        parametros: {},
-        seguimiento_post: "info_personalizadas",
+        tool_principal: "enviar_catalogo",
+        parametros: {
+          coleccion: "todos",
+          texto_acompanante:
+            "¡Hola! 🥳💖 Sí elaboramos piezas personalizadas. Antes échale un ojo a nuestros catálogos por si hay algo que te late, y si quieres algo único cuéntame qué tienes en mente ✨",
+        },
+        seguimiento_post: "preguntar_listo_pedido",
       },
       instrucciones_tono: {
         ...FALLBACK.instrucciones_tono,
         registro: "calido_nueva",
         longitud_maxima_palabras: 80,
       },
-      eventos_detectados: [{ tipo: "interes_personalizada", detalle: "Cliente preguntó por pieza personalizada" }],
-      razonamiento_breve: "[demo] Personalizadas → info + oferta de asesora",
+      eventos_detectados: [
+        { tipo: "interes_personalizada", detalle: "Primera mención de personalizada — mandar catálogos primero" },
+      ],
+      razonamiento_breve: "[demo] Personalizadas (sin FAQ previa) → mandar catálogos master",
     });
   }
 
-  // CATÁLOGO PANDORA / MAYOREO
-  const mayoreoSinPandora = /mayoreo|cat[aá]logo|catalogo/.test(m) && !/pandora|taxco|tows/.test(m);
-  if (/pandora/.test(m) || mayoreoSinPandora) {
-    const coleccion: "pandora" | "taxco" | "tows" = /taxco/.test(m)
+  // CATÁLOGO MAYOREO
+  // Si la clienta menciona una colección específica → solo esa.
+  // Si pide "catálogo" / "mayoreo" sin especificar → master con los 3.
+  const mencionaColeccion = /pandora|taxco|tows/.test(m);
+  const pideCatalogoGenerico = /mayoreo|cat[aá]logo|catalogo/.test(m);
+  if (mencionaColeccion || pideCatalogoGenerico) {
+    const coleccion: "pandora" | "taxco" | "tows" | "todos" = /taxco/.test(m)
       ? "taxco"
       : /tows/.test(m)
         ? "tows"
-        : "pandora";
+        : /pandora/.test(m)
+          ? "pandora"
+          : "todos";
+    const texto =
+      coleccion === "todos"
+        ? "¡Hola! 🥳💖 Tenemos diferentes tipos de Joyería, da click en el enlace 🔗 que sea de tu agrado."
+        : `¡Qué padre que te interesa ${coleccion}! Te paso el catálogo ✨`;
     return withLive({
       ...FALLBACK,
       _demo: true,
@@ -261,10 +309,7 @@ function demoVerificador(
       },
       accion_recomendada: {
         tool_principal: "enviar_catalogo",
-        parametros: {
-          coleccion,
-          texto_acompanante: `¡Qué padre que te interesa ${coleccion}! Te paso el catálogo ✨`,
-        },
+        parametros: { coleccion, texto_acompanante: texto },
         seguimiento_post: "preguntar_listo_pedido",
       },
       instrucciones_tono: {
@@ -272,7 +317,7 @@ function demoVerificador(
         registro: "calido_nueva",
         longitud_maxima_palabras: 40,
       },
-      razonamiento_breve: `[demo] Mayoreo catálogo → ${coleccion}`,
+      razonamiento_breve: `[demo] Catálogo → ${coleccion}`,
     });
   }
 

@@ -97,7 +97,7 @@ Devuelve JSON con esta estructura exacta:
 REGLAS DE PARÁMETROS POR TOOL (OBLIGATORIO LLENAR):
 
 - Si tool_principal = "enviar_imagen_faq" → parametros DEBE incluir: {id_imagen: <número del mapeo>, texto_acompanante: "..."}
-- Si tool_principal = "enviar_catalogo" → parametros DEBE incluir: {coleccion: "pandora" | "taxco" | "tows", texto_acompanante: "..."}
+- Si tool_principal = "enviar_catalogo" → parametros DEBE incluir: {coleccion: "pandora" | "taxco" | "tows" | "todos", texto_acompanante: "..."}. Usa "todos" cuando la clienta pide "catálogo de mayoreo" sin especificar colección — la tool mandará el mensaje master con los 3 catálogos. Solo elige "pandora" / "taxco" / "tows" si la clienta menciona la colección explícitamente.
 - Si tool_principal = "invitar_grupo" → parametros DEBE incluir: {texto_acompanante: "..."}
 - Si tool_principal = "handoff_asesora" → parametros DEBE incluir: {motivo: "mayoreo_cotizacion" | "reclamo" | "personalizado" | "solicitud_explicita" | "visita_presencial" | "compra_en_vivo", prioridad: "normal" | "alta" | "urgente"}
 - Si tool_principal = "programar_seguimiento" → parametros DEBE incluir: {tipo: "post_compra_7d" | "reactivacion_fria", dias_offset: <número>}

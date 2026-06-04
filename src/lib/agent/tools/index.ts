@@ -36,7 +36,9 @@ type CommonArgs = {
 };
 
 const CATALOGOS = {
-  pandora: "https://www.canva.com/design/DAGgun-_kzE/isvBbeVkT0S448hgiqV3YA/view",
+  pandora: "https://www.canva.com/design/DAGgun-_kzE/isvBbeVkT0S448hgiqV3YA/view?utm_content=DAGgun-_kzE&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=hec37154b5d",
+  pandora_sin_precios:
+    "https://www.canva.com/design/DAGg-zNAB9k/sTaAKA3YJGy-9K7y2nL6jA/view?utm_content=DAGg-zNAB9k&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=ha0181b1eaf",
   taxco: "https://mardeplatataxco.my.canva.site/",
   tows: "https://mardeplatataxco.my.canva.site/tows",
 } as const;
@@ -158,20 +160,51 @@ export async function enviarImagenFaq(args: {
 // ──────────────────────────────────────────────────────────
 export async function enviarCatalogo(args: {
   numero_whatsapp: string;
-  coleccion: "pandora" | "taxco" | "tows";
+  coleccion: "pandora" | "taxco" | "tows" | "todos";
   texto_acompanante: string;
 } & CommonArgs): Promise<ToolResult> {
   const supabase = createAdminClient();
-  const claveMap = {
-    pandora: "catalogo_pandora_url",
-    taxco: "catalogo_taxco_url",
-    tows: "catalogo_tows_url",
-  } as const;
-  const url = await readConfig(claveMap[args.coleccion], CATALOGOS[args.coleccion]);
 
-  const messages = [
-    { type: "text" as const, text: `${args.texto_acompanante}\n\n${url}` },
-  ];
+  // Construir el mensaje según la colección. "todos" manda el master
+  // con los 3 catálogos (Taxco, Pandora con precios, Pandora sin
+  // precios) en el formato que Mar usa.
+  let textoMensaje: string;
+  if (args.coleccion === "todos") {
+    const urlTaxco = await readConfig("catalogo_taxco_url", CATALOGOS.taxco);
+    const urlPandoraConPrecios = await readConfig(
+      "catalogo_pandora_url",
+      CATALOGOS.pandora,
+    );
+    const urlPandoraSinPrecios = await readConfig(
+      "catalogo_pandora_sin_precios_url",
+      CATALOGOS.pandora_sin_precios,
+    );
+    const apertura = args.texto_acompanante?.trim()
+      ? args.texto_acompanante.trim()
+      : "¡Hola! 🥳💖 Tenemos diferentes tipos de Joyería, da click en el enlace 🔗 que sea de tu agrado.";
+    textoMensaje = `${apertura}
+
+1️⃣ Catálogos de *Joyería de Taxco* Mayoreo (sets, anillos, collares, joyería para hombre, etc.):
+👉🏻 ${urlTaxco}
+
+2️⃣ Catálogos de *Pandora* Mayoreo
+
+Pandora con precios 🩷:
+👉🏻 ${urlPandoraConPrecios}
+
+*Pandora* sin precios 🩷:
+👉🏻 ${urlPandoraSinPrecios}`;
+  } else {
+    const claveMap = {
+      pandora: "catalogo_pandora_url",
+      taxco: "catalogo_taxco_url",
+      tows: "catalogo_tows_url",
+    } as const;
+    const url = await readConfig(claveMap[args.coleccion], CATALOGOS[args.coleccion]);
+    textoMensaje = `${args.texto_acompanante}\n\n${url}`;
+  }
+
+  const messages = [{ type: "text" as const, text: textoMensaje }];
   await sendToClient({
     subscriberId: args.subscriber_id,
     kaizenSessionId: args.kaizen_session_id ?? null,
@@ -183,7 +216,7 @@ export async function enviarCatalogo(args: {
     .from("estado_conversacion_actual")
     .update({
       catalogo_enviado: true,
-      catalogo_tipo: args.coleccion,
+      catalogo_tipo: args.coleccion === "todos" ? "todos" : args.coleccion,
       rama_activa: "R1",
       paso_actual: "catalogo_enviado",
       ultimo_tool_ejecutado: "enviar_catalogo",

@@ -323,7 +323,7 @@ async function executeTool(input: {
       case "enviar_catalogo":
         return await enviarCatalogo({
           ...common,
-          coleccion: (p.coleccion as "pandora" | "taxco" | "tows") ?? "pandora",
+          coleccion: (p.coleccion as "pandora" | "taxco" | "tows" | "todos") ?? "todos",
           texto_acompanante: String(p.texto_acompanante ?? ""),
         });
       case "invitar_grupo":
