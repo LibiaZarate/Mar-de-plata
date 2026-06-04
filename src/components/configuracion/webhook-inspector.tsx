@@ -58,6 +58,17 @@ type Entry = {
   kaizenSessionId: string | null;
   kaizenCallback: string | null;
   cleaned: CleanedPayload;
+  flow?: {
+    mode: string;
+    demo: boolean;
+    leadCreated: boolean;
+    toolResult: { tool: string; ok: boolean } | null;
+    agenteTexto: string;
+    fragmentos: string[];
+    deliveryNotes: string[];
+    outbound: Array<{ source: string; type: string; text?: string; url?: string }>;
+  } | null;
+  error?: string | null;
   rawBody: Record<string, unknown>;
   headers: Record<string, string>;
   guardrail: GuardrailPlan | null;
@@ -214,6 +225,15 @@ export function WebhookInspector() {
                     </pre>
                   </Section>
 
+                  {entry.flow && <FlowResultPanel flow={entry.flow} />}
+                  {entry.error && (
+                    <Section title="Error">
+                      <pre className="text-[11px] font-mono text-rosey-500 whitespace-pre-wrap break-all">
+                        {entry.error}
+                      </pre>
+                    </Section>
+                  )}
+
                   {(entry.kaizenSessionId || entry.kaizenCallback) && (
                     <Section title="Headers Kaizen">
                       <div className="text-[11px] font-mono space-y-1">
@@ -271,6 +291,72 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         {children}
       </div>
     </div>
+  );
+}
+
+function FlowResultPanel({
+  flow,
+}: {
+  flow: NonNullable<Entry["flow"]>;
+}) {
+  const delivery = flow.deliveryNotes.join(", ") || "—";
+  const stub = flow.deliveryNotes.some((n) => n.startsWith("stub"));
+  const manychatOk = flow.deliveryNotes.some((n) => n.startsWith("manychat 200") || n === "manychat");
+  return (
+    <Section title="Resultado del flow (lo que SALIÓ)">
+      <div className="space-y-2 text-[12px]">
+        <div className="grid grid-cols-[140px_1fr] gap-2">
+          <div className="text-muted-foreground">mode</div>
+          <div className="font-mono">{flow.mode}{flow.demo ? " · demo" : ""}</div>
+          <div className="text-muted-foreground">tool ejecutada</div>
+          <div className="font-mono">
+            {flow.toolResult ? `${flow.toolResult.tool} · ${flow.toolResult.ok ? "ok" : "FAILED"}` : "—"}
+          </div>
+          <div className="text-muted-foreground">delivery</div>
+          <div className={`font-mono ${stub ? "text-rosey-500" : manychatOk ? "text-sage-600" : ""}`}>
+            {delivery}
+            {stub && (
+              <div className="text-rosey-500 text-[11px] mt-1 leading-snug">
+                ⚠️ MANYCHAT_API_KEY no está configurada en Vercel. La respuesta
+                NUNCA llegó al cliente porque cayó al stub.
+              </div>
+            )}
+          </div>
+          <div className="text-muted-foreground">lead creado</div>
+          <div className="font-mono">{String(flow.leadCreated)}</div>
+        </div>
+
+        {flow.agenteTexto && (
+          <div>
+            <div className="text-muted-foreground mb-1">texto generado por Sirena</div>
+            <div className="bg-cream-100 border border-foreground/10 rounded px-2 py-1.5 font-mono text-[11px] whitespace-pre-wrap">
+              {flow.agenteTexto}
+            </div>
+          </div>
+        )}
+
+        {flow.outbound.length > 0 && (
+          <div>
+            <div className="text-muted-foreground mb-1">
+              mensajes salientes ({flow.outbound.length})
+            </div>
+            <div className="space-y-1">
+              {flow.outbound.map((m, i) => (
+                <div
+                  key={i}
+                  className="bg-cream-100 border border-foreground/10 rounded px-2 py-1 font-mono text-[11px]"
+                >
+                  <span className="text-foreground/55">
+                    [{m.source}/{m.type}]
+                  </span>{" "}
+                  {m.type === "image" ? m.url : m.text}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </Section>
   );
 }
 

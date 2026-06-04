@@ -121,6 +121,8 @@ export async function POST(req: NextRequest) {
           tool_ok: flow.toolResult?.ok ?? null,
           fragmentos: flow.fragmentos.length,
           outbound: flow.outbound.length,
+          delivery: flow.deliveryNotes,
+          agente_texto: flow.agenteTexto?.slice(0, 280) ?? null,
           duration_ms: flow.durationMs,
         }
       : null,
