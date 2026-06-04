@@ -128,13 +128,18 @@ REGLAS GENERALES:
    - Si la clienta saluda o hace conversación abierta (hola, buenas, ¿qué tal?, etc.) → mencionar_live_activo=true igual (que Sirena le avise que están en vivo).
    - Única excepción: si es un reclamo, urgencia, o pregunta muy específica de FAQ no relacionada con el live (envíos, formas de pago) → mencionar_live_activo=false (no distraer del tema).
    - DEDUP: si en contexto_lead.ultimos_mensajes algún mensaje saliente reciente ya menciona "en vivo", "live ahora", "transmisión" o "estamos en vivo", igual marca mencionar_live_activo=true PERO añade en razonamiento_breve "live ya mencionado en turno previo, solo recordar tiempo". El Agente sabe que en ese caso solo dice los minutos restantes, no re-anuncia.
-7. Si la clienta pide hablar con humano, mencionar Profeco/fraude/denuncia/reclamo → tool_principal='handoff_asesora', prioridad='urgente', requiere_escalacion_mar=true. (Solo si NO está ya en handoff — ver regla crítica arriba.)
-8. Si la clienta pide diseño personalizado → tool_principal='handoff_asesora', motivo='personalizado'. (Solo si NO está ya en handoff.)
-9. MENUDEO (R3): si la clienta quiere comprar UNA pieza, piezas sueltas, "una sola", "para mí", "no para revender" → intencion_primaria='comprar_menudeo', rama_sugerida='R3', tool_principal='enviar_sitio_menudeo'.
-10. TRANSMISIONES (interés por los lives, NO en intención de comprar ahora): preguntas como "¿hacen lives?", "¿cuándo son las transmisiones?", "¿cómo funcionan los vivos?", "¿qué día transmiten?" → intencion_primaria='consultar_faq', tool_principal='enviar_imagen_faq', parametros.id_imagen=26, seguimiento_post='ofrecer_handoff_nat_eli'.
-11. VISITA PRESENCIAL (R5):
-    - Si dice que quiere visitar / ir / pasar por Taxco / conocer el local SIN especificar día → tool_principal='responder_texto_simple', registro='calido_nueva', seguimiento_post='preguntar_dia_visita'. El agente preguntará si entre semana o sábado.
-    - Si menciona día específico ("voy en sábado", "el viernes", "entre semana") → tool_principal='agendar_visita_taxco' con parametros.dia="sabado" (si sábado o fin de semana) o "entresemana" (si lun-vie). NO marques requiere_handoff=true (la tool ya lo dispara internamente).
+7. RECLAMO GRAVE / SOLICITUD EXPLÍCITA DE HUMANO / FRAUDE / PROFECO: estos sí son handoff inmediato sin pedir permiso. tool_principal='handoff_asesora', prioridad='urgente', requiere_escalacion_mar=true. (Solo si NO está ya en handoff.)
+
+REGLA GENERAL CRÍTICA SOBRE HANDOFFS: para cualquier otro caso (lista para pedido, quiere coordinar visita, quiere abrir carrito en live, pieza personalizada, etc.), Sirena NO debe pasar a asesora directo. Primero debe PREGUNTAR "¿te paso con una de nuestras asesoras?". Solo en el siguiente turno, cuando la clienta confirme ("sí", "porfa", "dale"), ahí sí tool_principal='handoff_asesora'.
+   - Si detectas confirmación clara de querer asesora en el turno actual (sí/porfa/sí pasame/dale) Y en el turno previo Sirena ofreció pasar con asesora (revisar contexto_lead.ultimos_mensajes saliente reciente con "te paso con una asesora" o "¿te gustaría que te pase"): tool_principal='handoff_asesora', motivo derivado del contexto (visita_presencial, lista_pedido, etc.), prioridad='normal'.
+
+8. MENUDEO (R3): si la clienta quiere comprar UNA pieza, piezas sueltas, "una sola", "para mí", "no para revender" → intencion_primaria='comprar_menudeo', rama_sugerida='R3', tool_principal='enviar_sitio_menudeo'.
+9. TRANSMISIONES (interés por los lives, NO en intención de comprar ahora): preguntas como "¿hacen lives?", "¿cuándo son las transmisiones?", "¿cómo funcionan los vivos?", "¿qué día transmiten?" → intencion_primaria='consultar_faq', tool_principal='enviar_imagen_faq', parametros.id_imagen=26, seguimiento_post='ofrecer_handoff_nat_eli'. El Agente terminará preguntando si quiere asesora; NO marques requiere_handoff aquí.
+10. VISITA PRESENCIAL (R5):
+    - Sin día → tool_principal='responder_texto_simple', registro='calido_nueva', seguimiento_post='preguntar_dia_visita'.
+    - Con día → tool_principal='agendar_visita_taxco' con parametros.dia="sabado" o "entresemana". La tool YA pregunta al final si quiere asesora; NO marques requiere_handoff todavía.
+11. PIEZA PERSONALIZADA: si pregunta por diseño personalizado, pieza única, "puedo mandar una foto y la replican", "diseño propio", "como esta foto", etc. → intencion_primaria='personalizado', rama_sugerida='R1', tool_principal='responder_texto_simple', seguimiento_post='info_personalizadas'. NO handoff automático. El Agente le explica el mínimo de $1500, le pide una foto de referencia y pregunta si quiere asesora.
+12. LISTA PARA PEDIDO post-catálogo: si ya se envió catálogo (revisar estado_actual.catalogo_enviado=true) y la clienta dice algo tipo "ya estoy lista", "quiero hacer pedido", "cómo lo armo" → tool_principal='responder_texto_simple', seguimiento_post='ofrecer_handoff_pedido'. El Agente preguntará si quiere asesora.
 
 Devuelve SOLO el JSON, sin texto adicional ni markdown.`;
 

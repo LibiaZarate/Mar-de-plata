@@ -27,8 +27,9 @@ const URLS_DEFAULT: SirenaUrls = {
   sitio_web_menudeo: "https://www.mardeplatataxco.com",
   ubicacion_taxco_maps:
     "https://www.google.com/maps/search/?api=1&query=Plaza+San+Hip%C3%B3lito+Local+5%2C+Taxco+de+Alarc%C3%B3n%2C+40200",
+  // Mar pasó este link de Canva como el oficial de políticas
   politicas_manual_pdf:
-    "https://nbciljmueoihtzznmvdg.supabase.co/storage/v1/object/public/politicasmanual/Politicas%20y%20Manual%20de%20Compras.pdf",
+    "https://www.canva.com/design/DAHITaosuVw/gKkRE6FNj1YVAoV0WT7MXQ/view?utm_content=DAHITaosuVw&utm_campaign=designshare&utm_medium=link&utm_source=viewer",
 };
 
 export async function resolveSirenaUrls(): Promise<SirenaUrls> {

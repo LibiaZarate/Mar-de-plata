@@ -119,6 +119,19 @@ function demoVerificador(
       return /en vivo|live ahora|estamos en vivo|transmisi[oó]n/.test(t);
     });
 
+  // ¿Sirena ya ofreció pasar con asesora en el último mensaje saliente?
+  // Si sí, una confirmación tipo "sí/dale/porfa" en este turno debe disparar
+  // el handoff de verdad (en lugar de volver a ofrecer).
+  const ultimoSaliente = mensajesPrevios
+    .filter((msg) => msg.direccion === "saliente")
+    .slice(-1)[0];
+  const sirenaYaOfrecioAsesora = !!ultimoSaliente && /te paso con|te puedo (pasar|conectar)|quieres que te (pase|conecte)|gustar[ií]a que te pase/i.test(
+    String(ultimoSaliente.texto ?? ""),
+  );
+  const clientaConfirma = /^(s[ií]|sip|dale|porfa|por favor|sí pásame|si pasame|por supuesto|claro|ok|okey|sí porfa|sí por favor|pásame|pasame|conéctame|conectame|conectarme)\b/i.test(
+    mensaje.trim(),
+  );
+
   // Helper que aplica mencionar_live_activo si hay live ahora,
   // salvo en casos donde distraería (reclamos, handoffs).
   const withLive = (
@@ -166,7 +179,76 @@ function demoVerificador(
     };
   }
 
-  if (/pandora/.test(m)) {
+  // CONFIRMACIÓN DE HANDOFF: si Sirena ya ofreció asesora en el turno
+  // previo y la clienta dice "sí/dale/porfa" ahora → handoff real.
+  if (sirenaYaOfrecioAsesora && clientaConfirma) {
+    // Derivamos el motivo del paso_actual del estado si está disponible
+    const paso = (estado?.paso_actual as string | undefined) ?? "";
+    const motivo = paso.includes("visita")
+      ? "visita_presencial"
+      : paso.includes("personalizad")
+        ? "personalizado"
+        : paso.includes("live") || paso.includes("transmisi")
+          ? "compra_en_vivo"
+          : "solicitud_explicita";
+    return {
+      ...FALLBACK,
+      _demo: true,
+      intencion_primaria: "solicitud_humano_directa",
+      confianza: 0.92,
+      rama_sugerida: "HANDOFF",
+      contexto_clave: { ...FALLBACK.contexto_clave, es_continuacion: true },
+      accion_recomendada: {
+        tool_principal: "handoff_asesora",
+        parametros: { motivo, prioridad: "normal" },
+        seguimiento_post: "ninguno",
+      },
+      instrucciones_tono: {
+        ...FALLBACK.instrucciones_tono,
+        registro: "calido_nueva",
+        longitud_maxima_palabras: 25,
+      },
+      alertas: { requiere_handoff: true, requiere_escalacion_mar: false },
+      razonamiento_breve: `[demo] Sirena ofreció asesora, clienta confirmó → handoff (motivo: ${motivo})`,
+    };
+  }
+
+  // PIEZA PERSONALIZADA → texto con info + oferta de asesora (no auto-handoff)
+  if (
+    /personalizad[ao]|dise[nñ]o (propio|m[ií]o|especial)|como esta foto|mandar.* foto|env[ií]ar.* imagen|igual a esta|r[eé]plica de esta|hac[eé]r.* pieza/.test(
+      m,
+    )
+  ) {
+    return withLive({
+      ...FALLBACK,
+      _demo: true,
+      intencion_primaria: "personalizado",
+      confianza: 0.9,
+      rama_sugerida: "R1",
+      contexto_clave: { ...FALLBACK.contexto_clave, senal_compra: "media" },
+      accion_recomendada: {
+        tool_principal: "responder_texto_simple",
+        parametros: {},
+        seguimiento_post: "info_personalizadas",
+      },
+      instrucciones_tono: {
+        ...FALLBACK.instrucciones_tono,
+        registro: "calido_nueva",
+        longitud_maxima_palabras: 80,
+      },
+      eventos_detectados: [{ tipo: "interes_personalizada", detalle: "Cliente preguntó por pieza personalizada" }],
+      razonamiento_breve: "[demo] Personalizadas → info + oferta de asesora",
+    });
+  }
+
+  // CATÁLOGO PANDORA / MAYOREO
+  const mayoreoSinPandora = /mayoreo|cat[aá]logo|catalogo/.test(m) && !/pandora|taxco|tows/.test(m);
+  if (/pandora/.test(m) || mayoreoSinPandora) {
+    const coleccion: "pandora" | "taxco" | "tows" = /taxco/.test(m)
+      ? "taxco"
+      : /tows/.test(m)
+        ? "tows"
+        : "pandora";
     return withLive({
       ...FALLBACK,
       _demo: true,
@@ -180,8 +262,8 @@ function demoVerificador(
       accion_recomendada: {
         tool_principal: "enviar_catalogo",
         parametros: {
-          coleccion: "pandora",
-          texto_acompanante: "¡Qué padre que te interesa Pandora! Te paso el catálogo ✨",
+          coleccion,
+          texto_acompanante: `¡Qué padre que te interesa ${coleccion}! Te paso el catálogo ✨`,
         },
         seguimiento_post: "preguntar_listo_pedido",
       },
@@ -190,7 +272,7 @@ function demoVerificador(
         registro: "calido_nueva",
         longitud_maxima_palabras: 40,
       },
-      razonamiento_breve: "[demo] Detección por keyword 'pandora'",
+      razonamiento_breve: `[demo] Mayoreo catálogo → ${coleccion}`,
     });
   }
 

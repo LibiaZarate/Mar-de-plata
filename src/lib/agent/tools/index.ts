@@ -555,42 +555,12 @@ export async function agendarVisitaTaxco(args: {
   if (imgUrl) {
     messages.push({ type: "image", url: imgUrl });
   }
+  // Mensaje sin auto-handoff: damos la info, le pedimos agendar
+  // 24h antes y le PREGUNTAMOS si quiere asesora (no asumimos).
   messages.push({
     type: "text",
-    text: `Esta es nuestra ubicación 📍\n${maps}\n\nPor favor agenda tu visita con 24 horas de anticipación con una de nuestras asesoras — ya te paso con ella 💗`,
+    text: `Esta es nuestra ubicación 📍\n${maps}\n\nPor favor agenda tu visita con 24 horas de anticipación. ¿Te gustaría que te pase con una de nuestras asesoras para coordinarlo? 💗`,
   });
-
-  // Round-robin asesora (igual que handoffAsesora)
-  const { data: leadRow } = await supabase
-    .from("leads")
-    .select("asesora_asignada")
-    .eq("numero_whatsapp", args.numero_whatsapp)
-    .maybeSingle();
-  let asesora: { id: string; nombre_completo: string } | null = null;
-  if (leadRow?.asesora_asignada) {
-    const { data } = await supabase
-      .from("asesoras")
-      .select("id,nombre_completo")
-      .eq("id", leadRow.asesora_asignada)
-      .maybeSingle();
-    asesora = data
-      ? { id: data.id as string, nombre_completo: data.nombre_completo as string }
-      : null;
-  }
-  if (!asesora) {
-    const { data } = await supabase
-      .from("asesoras")
-      .select("id,nombre_completo,en_onboarding,conversaciones_abiertas,ultima_asignacion")
-      .eq("activa", true)
-      .order("en_onboarding", { ascending: false })
-      .order("conversaciones_abiertas", { ascending: true })
-      .order("ultima_asignacion", { ascending: true, nullsFirst: true })
-      .limit(1)
-      .maybeSingle();
-    asesora = data
-      ? { id: data.id as string, nombre_completo: data.nombre_completo as string }
-      : null;
-  }
 
   await sendToClient({
     subscriberId: args.subscriber_id,
@@ -599,58 +569,18 @@ export async function agendarVisitaTaxco(args: {
     messages: messages as Array<{ type: "text"; text: string } | { type: "image"; url: string }>,
   });
 
-  // Estado: rama R5
+  // Estado: rama R5, esperando confirmación. NO marcamos
+  // requiere_handoff todavía — lo decide el verificador cuando la
+  // clienta responda "sí, pásame con asesora".
   await supabase
     .from("estado_conversacion_actual")
     .update({
       rama_activa: "R5",
-      paso_actual: "visita_agendando",
+      paso_actual: "visita_esperando_confirmacion_asesora",
       ultimo_tool_ejecutado: "agendar_visita_taxco",
       ultimo_timestamp: new Date().toISOString(),
-      requiere_handoff: !!asesora,
-      prioridad_handoff: "normal",
     })
     .eq("numero_whatsapp", args.numero_whatsapp);
-
-  if (asesora) {
-    await supabase
-      .from("leads")
-      .update({
-        asesora_asignada: asesora.id,
-        fecha_asignacion: new Date().toISOString(),
-      })
-      .eq("numero_whatsapp", args.numero_whatsapp);
-
-    await supabase.from("alertas").insert({
-      tipo: "handoff_normal",
-      prioridad: "normal",
-      titulo: `Visita presencial · ${args.dia === "sabado" ? "sábado" : "entre semana"}`,
-      descripcion: "Cliente quiere visitar el local en Taxco. Agendar 24h antes.",
-      numero_whatsapp: args.numero_whatsapp,
-      asesora_asignada_id: asesora.id,
-      para_mar: false,
-      contexto_json: {
-        motivo: "agendar_visita_taxco",
-        origen: "agendar_visita_taxco",
-        asesora_nombre: asesora.nombre_completo,
-        dia_solicitado: args.dia,
-      },
-    });
-
-    const { data: cargaRow } = await supabase
-      .from("asesoras")
-      .select("conversaciones_abiertas,conversaciones_dia")
-      .eq("id", asesora.id)
-      .maybeSingle();
-    await supabase
-      .from("asesoras")
-      .update({
-        conversaciones_abiertas: (cargaRow?.conversaciones_abiertas ?? 0) + 1,
-        conversaciones_dia: (cargaRow?.conversaciones_dia ?? 0) + 1,
-        ultima_asignacion: new Date().toISOString(),
-      })
-      .eq("id", asesora.id);
-  }
 
   await supabase.from("conversaciones").insert({
     numero_whatsapp: args.numero_whatsapp,
@@ -667,7 +597,7 @@ export async function agendarVisitaTaxco(args: {
     ok: true,
     outboundMessages: messages,
     notes: [
-      `Imagen #${idImagen} (${args.dia}) + maps enviados${asesora ? ` + handoff a ${asesora.nombre_completo}` : " (sin asesora disponible)"}`,
+      `Imagen #${idImagen} (${args.dia}) + maps enviados · esperando confirmación de handoff`,
     ],
   };
 }

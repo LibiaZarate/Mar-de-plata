@@ -219,6 +219,15 @@ Cuéntame qué te gustó cuando te des una vuelta 💕`;
       if (seg === "preguntar_dia_visita") {
         return `¡Qué padre que nos quieras visitar, linda! 💗 Cuéntame, ¿piensas venir entre semana (lunes a viernes) o un sábado? Para pasarte la ubicación correcta ✨`;
       }
+      if (seg === "info_personalizadas") {
+        return `Elaboramos piezas personalizadas dentro de un pedido de mayoreo mínimo de $1,500 MXN ✨ Si quieres, mándame una foto o imagen de la idea de la pieza para analizarla. Si te late, te puedo pasar con una de nuestras asesoras para coordinarlo, ¿quieres? 💎`;
+      }
+      if (seg === "ofrecer_handoff_pedido") {
+        return `¿Estás lista para armar tu pedido? Si sí, te puedo pasar con Nat o Eli para que te lo armen 💖 Si no, dime qué duda tienes y la resolvemos juntas.`;
+      }
+      if (seg === "ofrecer_handoff_nat_eli") {
+        return `Si te interesa abrir carrito para apartar piezas en alguno de los lives, te puedo conectar con Nat o Eli. ¿Quieres que te pase con una de ellas? 💕`;
+      }
       return `Cuéntame un poquito más, linda 💗 ¿Qué buscas exactamente? Así te ayudo mejor.`;
     }
   }
