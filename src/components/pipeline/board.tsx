@@ -1,10 +1,32 @@
 "use client";
 
 import { useState } from "react";
+import useSWR from "swr";
 import { useAsesoras, usePipelineLeads, STAGE_LABEL } from "@/lib/queries";
 import { actualizarEstadoLead } from "@/lib/actions";
 import { cn, formatMxn } from "@/lib/utils";
 import type { Lead, LeadEstado } from "@/lib/types";
+
+type AdInfo = { name: string; campaign_id: string; campaign_name: string };
+type AdsMap = Map<string, AdInfo>;
+
+const adsFetcher = async (url: string): Promise<AdsMap> => {
+  const r = await fetch(url, { cache: "no-store" });
+  const d = await r.json();
+  if (!d.ok) return new Map();
+  const campNames = new Map<string, string>(
+    (d.campaigns ?? []).map((c: { id: string; name: string }) => [c.id, c.name]),
+  );
+  const map: AdsMap = new Map();
+  for (const a of (d.ads ?? []) as { id: string; name: string; campaign_id: string }[]) {
+    map.set(a.id, {
+      name: a.name,
+      campaign_id: a.campaign_id,
+      campaign_name: campNames.get(a.campaign_id) ?? "—",
+    });
+  }
+  return map;
+};
 
 const STAGES: LeadEstado[] = ["lead_nueva", "calificada", "esperando_pago", "pagada"];
 
@@ -30,6 +52,11 @@ export function PipelineBoard() {
   const [advisor, setAdvisor] = useState<string | "all">("all");
   const { data: leads, isLoading, error } = usePipelineLeads(canal, advisor);
   const { data: asesoras } = useAsesoras();
+  const { data: adsMap } = useSWR<AdsMap>(
+    "/api/dashboard/meta/campanas?days=180",
+    adsFetcher,
+    { refreshInterval: 10 * 60_000, revalidateOnFocus: false },
+  );
 
   const grouped: Record<LeadEstado, Lead[]> = {
     lead_nueva: [], calificada: [], esperando_pago: [], pagada: [], perdida: [],
@@ -83,7 +110,7 @@ export function PipelineBoard() {
 
       <div className="grid grid-cols-4 gap-3">
         {STAGES.map((st) => (
-          <Column key={st} stage={st} leads={grouped[st]} loading={isLoading} />
+          <Column key={st} stage={st} leads={grouped[st]} loading={isLoading} adsMap={adsMap} />
         ))}
       </div>
 
@@ -98,7 +125,17 @@ export function PipelineBoard() {
   );
 }
 
-function Column({ stage, leads, loading }: { stage: LeadEstado; leads: Lead[]; loading?: boolean }) {
+function Column({
+  stage,
+  leads,
+  loading,
+  adsMap,
+}: {
+  stage: LeadEstado;
+  leads: Lead[];
+  loading?: boolean;
+  adsMap?: AdsMap;
+}) {
   const [over, setOver] = useState(false);
   const tone = STAGE_TONE[stage];
   return (
@@ -124,7 +161,7 @@ function Column({ stage, leads, loading }: { stage: LeadEstado; leads: Lead[]; l
       </div>
       <div className="space-y-2.5">
         {loading && <div className="h-24 rounded bg-cream-200 animate-pulse" />}
-        {!loading && leads.map((l) => <LeadCard key={l.numero_whatsapp} lead={l} />)}
+        {!loading && leads.map((l) => <LeadCard key={l.numero_whatsapp} lead={l} adsMap={adsMap} />)}
         {!loading && leads.length === 0 && (
           <div className="text-[12px] text-foreground/50 italic text-center py-6">
             arrastra aquí
@@ -135,13 +172,20 @@ function Column({ stage, leads, loading }: { stage: LeadEstado; leads: Lead[]; l
   );
 }
 
-function LeadCard({ lead }: { lead: Lead }) {
+function LeadCard({ lead, adsMap }: { lead: Lead; adsMap?: AdsMap }) {
   const idx = STAGES.indexOf(lead.estado);
   const next = idx >= 0 && idx < STAGES.length - 1 ? STAGES[idx + 1] : null;
   const border = CANAL_BORDER[lead.canal_origen ?? ""] ?? "border-t-foreground/30";
   const tail = lead.numero_whatsapp.slice(-4);
   const displayName = lead.nombre?.trim() || `Sin nombre · ${tail}`;
   const isTest = (lead.etiquetas ?? []).includes("playground");
+  const adInfo = lead.anuncio_id ? adsMap?.get(lead.anuncio_id) : undefined;
+  // Si no tenemos el ad cacheado pero hay anuncio_id, mostramos el ID truncado.
+  const adLabel = adInfo
+    ? adInfo.name
+    : lead.anuncio_id
+      ? `Anuncio ${lead.anuncio_id.slice(-6)}`
+      : null;
   return (
     <a
       href={`https://wa.me/${lead.numero_whatsapp.replace(/\D/g, "")}`}
@@ -172,6 +216,19 @@ function LeadCard({ lead }: { lead: Lead }) {
         {displayName}
       </div>
       <div className="text-[12px] text-foreground/55 mt-0.5">{lead.ciudad ?? "—"}</div>
+      {adLabel && (
+        <div
+          className="mt-1 text-[10px] text-skyy-500 truncate inline-flex items-center gap-1"
+          title={
+            adInfo
+              ? `Anuncio: ${adInfo.name}\nCampaña: ${adInfo.campaign_name}`
+              : `Anuncio ID: ${lead.anuncio_id}`
+          }
+        >
+          <span>📢</span>
+          <span className="truncate">{adLabel}</span>
+        </div>
+      )}
       <div className="flex flex-wrap gap-1.5 mt-2">
         {lead.tipo === "mayoreo" && <span className="pill-rose">Mayoreo</span>}
         {lead.tipo === "menudeo" && <span className="pill-sky">Menudeo</span>}

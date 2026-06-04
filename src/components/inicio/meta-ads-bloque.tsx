@@ -32,10 +32,29 @@ type Campaign = {
   cpl_dashboard: number | null;
 };
 
+type Ad = {
+  id: string;
+  name: string;
+  campaign_id: string;
+  effective_status?: string;
+  meta: {
+    spend: number;
+    impressions: number;
+    clicks: number;
+    ctr: number;
+    cpc: number;
+    cpm: number;
+  };
+  dashboard: { leads: number; pagados: number; facturacion: number };
+  roas: number | null;
+  cpl_dashboard: number | null;
+};
+
 type CampanasResp = {
   ok: boolean;
   error?: string;
   campaigns?: Campaign[];
+  ads?: Ad[];
   totales?: {
     spend: number;
     impressions: number;
@@ -60,6 +79,12 @@ export function MetaAdsBloque() {
     fetcher,
     { refreshInterval: 5 * 60_000 },
   );
+  // Ventana corta (7 días) para "top ads esta semana"
+  const { data: semana } = useSWR<CampanasResp>(
+    `/api/dashboard/meta/campanas?days=7`,
+    fetcher,
+    { refreshInterval: 5 * 60_000 },
+  );
 
   const ok = data?.ok === true;
   const campaigns = data?.campaigns ?? [];
@@ -70,6 +95,12 @@ export function MetaAdsBloque() {
     totales && totales.spend > 0
       ? totales.facturacion_dashboard / totales.spend
       : null;
+
+  // Top ads esta semana por leads atribuidos (no por gasto)
+  const adsSemana = (semana?.ads ?? [])
+    .filter((a) => a.dashboard.leads > 0)
+    .sort((a, b) => b.dashboard.leads - a.dashboard.leads)
+    .slice(0, 5);
 
   return (
     <section className="space-y-4">
@@ -181,6 +212,44 @@ export function MetaAdsBloque() {
                   </div>
                   <div className="text-right tabular-nums">
                     <RoasBadge value={c.roas} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {adsSemana.length > 0 && (
+            <div className="rounded-lg border border-foreground/15 bg-cream-50 overflow-hidden">
+              <div className="flex items-baseline justify-between px-5 py-3 border-b border-foreground/10">
+                <div className="label-xs">Top anuncios esta semana · por leads nuevos</div>
+                <div className="text-[10px] text-foreground/55">últimos 7 días</div>
+              </div>
+              <div className="grid grid-cols-[1.5fr_80px_80px_100px_70px] text-[10px] tracking-wider uppercase text-foreground/55 px-5 py-2 border-b border-foreground/10">
+                <div>Anuncio</div>
+                <div className="text-right">Leads</div>
+                <div className="text-right">Cerrados</div>
+                <div className="text-right">Facturó</div>
+                <div className="text-right">ROAS</div>
+              </div>
+              {adsSemana.map((a) => (
+                <div
+                  key={a.id}
+                  className="grid grid-cols-[1.5fr_80px_80px_100px_70px] items-center px-5 py-2.5 border-b border-foreground/10 last:border-0 text-sm hover:bg-cream-100/40"
+                >
+                  <div className="truncate" title={a.name}>
+                    {a.name}
+                  </div>
+                  <div className="text-right tabular-nums font-medium">
+                    {a.dashboard.leads}
+                  </div>
+                  <div className="text-right tabular-nums">{a.dashboard.pagados}</div>
+                  <div className="text-right tabular-nums">
+                    {a.dashboard.facturacion > 0
+                      ? formatMxn(a.dashboard.facturacion)
+                      : <span className="text-foreground/40">—</span>}
+                  </div>
+                  <div className="text-right tabular-nums">
+                    <RoasBadge value={a.roas} />
                   </div>
                 </div>
               ))}
