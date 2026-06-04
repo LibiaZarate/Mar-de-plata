@@ -72,6 +72,14 @@ type Insights = {
   recomendaciones?: string[];
 };
 
+type Healthcheck = {
+  ok: boolean;
+  ventana_dias: number;
+  total_leads: number;
+  con_anuncio_id: number;
+  canal_meta_o_instagram: number;
+};
+
 export function MetaAdsBloque() {
   const days = 30;
   const { data, isLoading } = useSWR<CampanasResp>(
@@ -101,6 +109,13 @@ export function MetaAdsBloque() {
     .filter((a) => a.dashboard.leads > 0)
     .sort((a, b) => b.dashboard.leads - a.dashboard.leads)
     .slice(0, 5);
+
+  // Healthcheck del pipeline de atribución
+  const { data: salud } = useSWR<Healthcheck>(
+    "/api/dashboard/meta/healthcheck",
+    fetcher,
+    { refreshInterval: 5 * 60_000 },
+  );
 
   return (
     <section className="space-y-4">
@@ -217,6 +232,8 @@ export function MetaAdsBloque() {
               ))}
             </div>
           )}
+
+          {salud && <HealthcheckPanel salud={salud} totalSpend={totales.spend} />}
 
           {adsSemana.length > 0 && (
             <div className="rounded-lg border border-foreground/15 bg-cream-50 overflow-hidden">
@@ -468,5 +485,82 @@ function InsightsBlock({ data }: { data: CampanasResp }) {
         </div>
       )}
     </div>
+  );
+}
+
+function HealthcheckPanel({
+  salud,
+  totalSpend,
+}: {
+  salud: Healthcheck;
+  totalSpend: number;
+}) {
+  // 4 chequeos de la cadena de atribución, cada uno con su diagnóstico.
+  const hayGasto = totalSpend > 0;
+  const hayLeads = salud.total_leads > 0;
+  const hayCanalMeta = salud.canal_meta_o_instagram > 0;
+  const hayAdId = salud.con_anuncio_id > 0;
+
+  const items: { ok: boolean; label: string; detalle: string }[] = [
+    {
+      ok: hayGasto,
+      label: "Meta tiene gasto en últimos 30 días",
+      detalle: hayGasto
+        ? `Sí · gasto registrado por Meta API`
+        : "Las campañas no han gastado nada. Activa una en Ads Manager.",
+    },
+    {
+      ok: hayLeads,
+      label: `Llegaron leads al webhook (${salud.total_leads} en 30d)`,
+      detalle: hayLeads
+        ? `${salud.total_leads} leads guardados en la tabla.`
+        : "Cero leads. Revisa que ManyChat esté apuntando al webhook de esta app.",
+    },
+    {
+      ok: hayCanalMeta,
+      label: `Leads con canal Meta/Instagram (${salud.canal_meta_o_instagram})`,
+      detalle: hayCanalMeta
+        ? "ManyChat está marcando el origen correctamente."
+        : "ManyChat no está rellenando canal_origen=meta_ctwa. Revisa el mapping del External Request.",
+    },
+    {
+      ok: hayAdId,
+      label: `Leads con ad_id capturado (${salud.con_anuncio_id})`,
+      detalle: hayAdId
+        ? `Bien · ${salud.con_anuncio_id} leads vinieron con metadata de Meta CTWA.`
+        : hayCanalMeta
+          ? "El canal es Meta pero NO llega ad_id. El anuncio probablemente NO es CTWA (es 'Tráfico' con link wa.me en vez de 'Mensajes' con WhatsApp como destino). Cambia el objetivo a 'Mensajes' en Ads Manager."
+          : "No aplica todavía — primero necesitas leads con canal Meta.",
+    },
+  ];
+
+  const allOk = items.every((i) => i.ok);
+
+  return (
+    <details className={cn(
+      "rounded-lg border px-4 py-3",
+      allOk ? "border-sage-300 bg-sage-50/30" : "border-ambr-300 bg-ambr-50/40",
+    )}>
+      <summary className="cursor-pointer text-[12px] font-medium flex items-center gap-2">
+        <span>{allOk ? "✅" : "⚠️"}</span>
+        Diagnóstico de atribución ·{" "}
+        {allOk
+          ? "todo el pipeline funciona"
+          : "hay un eslabón roto, click para ver"}
+      </summary>
+      <div className="mt-3 space-y-2">
+        {items.map((it, i) => (
+          <div key={i} className="flex items-start gap-2 text-[12px]">
+            <span className="mt-0.5">{it.ok ? "✓" : "✗"}</span>
+            <div className="flex-1">
+              <div className={cn("font-medium", it.ok ? "text-sage-600" : "text-ambr-600")}>
+                {it.label}
+              </div>
+              <div className="text-foreground/65 leading-snug">{it.detalle}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
