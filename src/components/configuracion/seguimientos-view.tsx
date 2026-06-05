@@ -58,11 +58,19 @@ export function SeguimientosView() {
       </div>
 
       <MigracionAviso />
+      <PanelLibia />
       <Plantillas />
       <Probar />
       <Cola />
     </div>
   );
+}
+
+// Panel de prueba con contexto: dispara seguimientos al número de Libia
+// (o cualquier otro número test) y previsualiza cómo queda el texto con
+// las variables resueltas del lead real.
+function PanelLibia() {
+  return <PanelPruebasContextuales />;
 }
 
 function MigracionAviso() {
@@ -461,6 +469,244 @@ function Cola() {
             </div>
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+type NumeroTest = { numero_whatsapp: string; nombre: string | null; etiquetas: string[] | null };
+type SnapshotPreview = Record<string, unknown>;
+
+const LIBIA_NUM = "5216682322911";
+
+function PanelPruebasContextuales() {
+  const numeros = useSWR<{ ok: boolean; numeros: NumeroTest[] }>(
+    "/api/seguimientos/numeros-test",
+    fetcher,
+    { refreshInterval: 60_000 },
+  );
+  const plantillas = useSWR<{ ok: boolean; plantillas: Plantilla[] }>(
+    "/api/seguimientos/plantillas",
+    fetcher,
+  );
+
+  const [numero, setNumero] = useState(LIBIA_NUM);
+  const [tipo, setTipo] = useState("lead_frio_24h");
+  const [modo, setModo] = useState<"plantilla" | "libre">("plantilla");
+  const [textoLibre, setTextoLibre] = useState("");
+  const [preview, setPreview] = useState<{ texto: string; snapshot: SnapshotPreview } | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [mensaje, setMensaje] = useState<{ tono: "ok" | "err"; texto: string } | null>(null);
+
+  const opciones = plantillas.data?.plantillas ?? [];
+  const numerosTest = numeros.data?.numeros ?? [];
+
+  async function previsualizar() {
+    setMensaje(null);
+    const body: Record<string, unknown> = { numero, preview: true };
+    if (modo === "plantilla") body.tipo = tipo;
+    else body.texto_libre = textoLibre;
+    const r = await fetch("/api/seguimientos/enviar-manual", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      setMensaje({ tono: "err", texto: d.error ?? "No se pudo previsualizar" });
+      return;
+    }
+    setPreview({ texto: d.texto, snapshot: d.snapshot });
+  }
+
+  async function enviar() {
+    setEnviando(true);
+    setMensaje(null);
+    const body: Record<string, unknown> = { numero };
+    if (modo === "plantilla") body.tipo = tipo;
+    else body.texto_libre = textoLibre;
+    const r = await fetch("/api/seguimientos/enviar-manual", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    setEnviando(false);
+    if (!d.ok) {
+      setMensaje({ tono: "err", texto: d.error ?? "Falló el envío" });
+      return;
+    }
+    setMensaje({
+      tono: "ok",
+      texto: `Enviado vía ${d.via}${d.via === "stub" ? " (sin MANYCHAT_API_KEY o sin subscriber_id)" : ""}`,
+    });
+    mutate("/api/seguimientos/recientes");
+  }
+
+  return (
+    <section className="rounded-lg border-2 border-lila-300 bg-lila-50/40 px-5 py-5 space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <div className="label-xs flex items-center gap-2">
+            <Sparkles className="h-3.5 w-3.5" /> Pruebas con contexto real
+          </div>
+          <h2 className="font-serif-display text-[22px] mt-1">Tu sandbox</h2>
+          <div className="text-[12px] text-foreground/65 mt-1 max-w-2xl">
+            Dispara seguimientos a tu número y revisa cómo queda el texto con
+            las variables resueltas. Los números marcados como prueba no
+            cuentan en KPIs ni aparecen en pipeline.
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-3">
+          <div>
+            <label className="text-[11px] text-foreground/60 font-medium uppercase tracking-wide">
+              Número destino
+            </label>
+            <select
+              value={numero}
+              onChange={(e) => {
+                setNumero(e.target.value);
+                setPreview(null);
+              }}
+              className="mt-1 w-full text-sm px-3 py-1.5 rounded border border-foreground/20 bg-cream-50"
+            >
+              <option value={LIBIA_NUM}>Libia (CEO) · +52 668 232 2911</option>
+              {numerosTest
+                .filter((n) => n.numero_whatsapp !== LIBIA_NUM)
+                .map((n) => (
+                  <option key={n.numero_whatsapp} value={n.numero_whatsapp}>
+                    {n.nombre ?? "Sin nombre"} · {n.numero_whatsapp}
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[11px] text-foreground/60 font-medium uppercase tracking-wide">
+              Modo
+            </label>
+            <div className="mt-1 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => { setModo("plantilla"); setPreview(null); }}
+                className={cn(
+                  "text-[12px] px-3 py-2 rounded border",
+                  modo === "plantilla"
+                    ? "border-lila-400 bg-lila-100 text-lila-600 font-medium"
+                    : "border-foreground/15 bg-cream-50",
+                )}
+              >
+                Plantilla
+              </button>
+              <button
+                onClick={() => { setModo("libre"); setPreview(null); }}
+                className={cn(
+                  "text-[12px] px-3 py-2 rounded border",
+                  modo === "libre"
+                    ? "border-lila-400 bg-lila-100 text-lila-600 font-medium"
+                    : "border-foreground/15 bg-cream-50",
+                )}
+              >
+                Texto libre
+              </button>
+            </div>
+          </div>
+
+          {modo === "plantilla" ? (
+            <div>
+              <label className="text-[11px] text-foreground/60 font-medium uppercase tracking-wide">
+                Plantilla
+              </label>
+              <select
+                value={tipo}
+                onChange={(e) => { setTipo(e.target.value); setPreview(null); }}
+                className="mt-1 w-full text-sm px-3 py-1.5 rounded border border-foreground/20 bg-cream-50"
+              >
+                {opciones.map((p) => (
+                  <option key={p.tipo} value={p.tipo}>
+                    {p.tipo} — {p.descripcion}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div>
+              <label className="text-[11px] text-foreground/60 font-medium uppercase tracking-wide">
+                Texto libre (acepta {`{nombre}`}, {`{ciudad}`}, bloques {`{si:recurrente}…{/si}`})
+              </label>
+              <textarea
+                value={textoLibre}
+                onChange={(e) => { setTextoLibre(e.target.value); setPreview(null); }}
+                rows={4}
+                className="mt-1 w-full text-sm px-3 py-2 rounded border border-foreground/20 bg-cream-50 font-mono"
+                placeholder="Hola {nombre}, ¿sigues por aquí? 💗"
+              />
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={previsualizar}
+              className="text-[12px] px-3 py-2 rounded border border-foreground/20 hover:bg-cream-100 inline-flex items-center gap-2"
+            >
+              <Sparkles className="h-3 w-3" /> Previsualizar
+            </button>
+            <button
+              onClick={enviar}
+              disabled={enviando}
+              className="text-[12px] px-3 py-2 rounded bg-lila-400 hover:bg-lila-500 text-cream-50 font-medium disabled:opacity-50 inline-flex items-center gap-2"
+            >
+              <Send className="h-3 w-3" />
+              {enviando ? "Enviando..." : "Enviar al WhatsApp"}
+            </button>
+          </div>
+
+          {mensaje && (
+            <div
+              className={cn(
+                "text-[12px] px-3 py-2 rounded border flex items-start gap-2",
+                mensaje.tono === "ok"
+                  ? "border-sage-300 bg-sage-50/40 text-sage-700"
+                  : "border-rosey-300 bg-rosey-50/40 text-rosey-600",
+              )}
+            >
+              {mensaje.tono === "ok" ? (
+                <Check className="h-3.5 w-3.5 mt-0.5" />
+              ) : (
+                <AlertCircle className="h-3.5 w-3.5 mt-0.5" />
+              )}
+              {mensaje.texto}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="text-[11px] text-foreground/60 font-medium uppercase tracking-wide">
+            Vista previa
+          </label>
+          {!preview ? (
+            <div className="mt-1 rounded border border-dashed border-foreground/15 bg-cream-50 px-4 py-6 text-center text-[12px] text-foreground/55 italic">
+              Dale a “Previsualizar” para ver cómo queda el texto con los datos
+              reales del lead seleccionado.
+            </div>
+          ) : (
+            <div className="mt-1 space-y-2">
+              <div className="rounded-lg border border-foreground/15 bg-cream-50 px-4 py-3 text-[13px] whitespace-pre-wrap leading-relaxed">
+                {preview.texto || (
+                  <span className="text-foreground/40 italic">[texto vacío]</span>
+                )}
+              </div>
+              <details className="text-[11px] text-foreground/60">
+                <summary className="cursor-pointer">Snapshot del contexto</summary>
+                <pre className="mt-2 bg-foreground/5 rounded p-2 text-[10px] overflow-x-auto max-h-60">
+                  {JSON.stringify(preview.snapshot, null, 2)}
+                </pre>
+              </details>
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );

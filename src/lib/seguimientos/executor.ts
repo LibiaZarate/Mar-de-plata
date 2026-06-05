@@ -24,7 +24,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendToClient } from "@/lib/agent/manychat";
 import type { FlowMode } from "@/lib/agent/mode";
-import { resolverPlantilla, renderPlantilla } from "./templates";
+import { resolverPlantilla, renderConSnapshot, renderPlantilla } from "./templates";
+import { construirSnapshot, type SnapshotSeguimiento } from "./snapshot";
 
 export type EjecutorOptions = {
   mode: FlowMode;
@@ -154,11 +155,41 @@ async function procesarUno(
     };
   }
 
-  // 2. Resolver plantilla y renderizar
+  // 2. Construir snapshot fresco (mezcla lo que se guardó al programar
+  // con el estado actual). Si el row tiene contexto guardado al programar,
+  // lo usamos como base; si no, reconstruimos en vivo.
+  const ctxRow = (row.contexto ?? {}) as Record<string, unknown>;
+  const contextoLibre =
+    (ctxRow.contexto_adicional as string) ||
+    (ctxRow.contexto_libre as string) ||
+    null;
+
+  let snapshot: SnapshotSeguimiento;
+  try {
+    snapshot = await construirSnapshot(sb, row.numero_whatsapp, contextoLibre);
+  } catch {
+    snapshot = {
+      nombre: (lead?.nombre as string) ?? null,
+      ciudad: null, canal_origen: null, tipo: null, estado: null,
+      compras_totales: 0, monto_acumulado: 0, es_recurrente: false,
+      fecha_ultima_compra: null,
+      rama_activa: null, catalogo_visto: null, faqs_respondidas: [],
+      intencion_compra_detectada: false, objecion_detectada: null,
+      requiere_handoff: false, grupo_invitado: false,
+      deposito_dado: false, deposito_validado: false,
+      ultimo_mensaje_clienta: null, ultimo_mensaje_sirena: null,
+      horas_desde_ultima_interaccion: null,
+      programado_en: row.ejecutar_en, contexto_libre: contextoLibre,
+    };
+  }
+
+  // 3. Resolver plantilla y renderizar con snapshot. Si la plantilla no
+  // tiene tokens nuevos, renderConSnapshot sigue funcionando porque
+  // {nombre} es el mínimo común.
   const plantilla = await resolverPlantilla(row.tipo);
-  const texto = renderPlantilla(plantilla, {
-    nombre: lead?.nombre as string | undefined,
-  });
+  const texto = renderConSnapshot(plantilla, snapshot);
+  // renderPlantilla queda como utilidad legacy
+  void renderPlantilla;
 
   // 3. Buscar subscriber_id si existe (necesario para ManyChat).
   // Si no tenemos, mode='production' con MANYCHAT_API_KEY hará stub.

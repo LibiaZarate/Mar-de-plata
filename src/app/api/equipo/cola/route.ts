@@ -3,6 +3,7 @@
 
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { obtenerNumerosTest, filtrarProduccion } from "@/lib/test-leads";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,8 +23,12 @@ export async function GET() {
       .limit(50);
     if (error) throw new Error(error.message);
 
+    // Excluir números de prueba (Libia, etc) de la cola
+    const numerosTest = await obtenerNumerosTest(sb);
+    const alertasFiltradas = filtrarProduccion(alertas ?? [], numerosTest);
+
     // Cruzar con leads para tener nombre + canal + tipo
-    const numeros = (alertas ?? []).map((a) => a.numero_whatsapp as string);
+    const numeros = alertasFiltradas.map((a) => a.numero_whatsapp as string);
     const { data: leads } = numeros.length
       ? await sb
           .from("leads")
@@ -36,7 +41,7 @@ export async function GET() {
 
     return NextResponse.json({
       ok: true,
-      cola: (alertas ?? []).map((a) => ({
+      cola: alertasFiltradas.map((a) => ({
         ...a,
         lead: leadsMap.get(a.numero_whatsapp as string) ?? null,
       })),

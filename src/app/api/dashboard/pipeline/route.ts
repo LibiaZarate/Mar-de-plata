@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { obtenerNumerosTest, filtrarProduccion } from "@/lib/test-leads";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,7 +25,13 @@ export async function GET(req: NextRequest) {
     const { data, error } = await q;
     if (error) throw new Error(error.message);
 
-    return NextResponse.json({ ok: true, leads: data ?? [] });
+    const numerosTest = await obtenerNumerosTest(sb);
+    const leads = filtrarProduccion(
+      (data ?? []) as { numero_whatsapp?: string }[],
+      numerosTest,
+    );
+
+    return NextResponse.json({ ok: true, leads });
   } catch (e) {
     return NextResponse.json(
       { ok: false, error: (e as Error).message, leads: [] },

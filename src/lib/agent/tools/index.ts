@@ -473,13 +473,32 @@ export async function programarSeguimiento(args: {
 }): Promise<ToolResult> {
   const supabase = createAdminClient();
   const ejecutarEn = new Date(Date.now() + args.dias_offset * 86400_000).toISOString();
+
+  // Snapshot del contexto al momento de programar.
+  // Si falla, seguimos guardando el seguimiento sin snapshot — el
+  // executor lo reconstruirá al enviar.
+  let snapshot: Record<string, unknown> | null = null;
+  try {
+    const { construirSnapshot } = await import("@/lib/seguimientos/snapshot");
+    snapshot = (await construirSnapshot(
+      supabase,
+      args.numero_whatsapp,
+      args.contexto_adicional ?? null,
+    )) as unknown as Record<string, unknown>;
+  } catch {
+    snapshot = null;
+  }
+
   const { data, error } = await supabase
     .from("seguimientos_programados")
     .insert({
       numero_whatsapp: args.numero_whatsapp,
       tipo: args.tipo,
       ejecutar_en: ejecutarEn,
-      contexto: { contexto_adicional: args.contexto_adicional ?? "" },
+      contexto: {
+        contexto_adicional: args.contexto_adicional ?? "",
+        snapshot,
+      },
     })
     .select("id,ejecutar_en")
     .single();

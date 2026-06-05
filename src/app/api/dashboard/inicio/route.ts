@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { obtenerNumerosTest, filtrarProduccion } from "@/lib/test-leads";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,18 +50,6 @@ function rangeBounds(range: Range): {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-async function countByDate(
-  sb: SupabaseClient,
-  table: string,
-  col: string,
-  bounds: Bounds,
-): Promise<number> {
-  let q: any = sb.from(table).select("*", { count: "exact", head: true });
-  if (bounds.start) q = q.gte(col, bounds.start).lt(col, bounds.end);
-  const { count } = await q;
-  return count ?? 0;
-}
-
 async function selectByDate(
   sb: SupabaseClient,
   table: string,
@@ -88,27 +77,27 @@ export async function GET(req: NextRequest) {
 
   try {
     const sb = createAdminClient();
+    const numerosTest = await obtenerNumerosTest(sb);
 
     const [
-      hCount,
-      aCount,
-      leadsCurList,
-      handoffsList,
-      cierresCur,
-      canalesData,
-      alertasCountObj,
-      conversacionesEnEstado,
-      requierenHandoff,
+      leadsHoyList,
+      leadsAyerList,
+      leadsCurListRaw,
+      handoffsListRaw,
+      cierresCurRaw,
+      alertasActivasRaw,
+      conversacionesEnEstadoRaw,
+      requierenHandoffRaw,
     ] = await Promise.all([
-      countByDate(sb, "leads", "primer_contacto", current),
-      countByDate(sb, "leads", "primer_contacto", previous),
+      selectByDate(sb, "leads", "numero_whatsapp", "primer_contacto", current),
+      selectByDate(sb, "leads", "numero_whatsapp", "primer_contacto", previous),
       selectByDate(sb, "leads", "numero_whatsapp,estado,canal_origen,primer_contacto", "primer_contacto", current),
       selectByDate(sb, "alertas", "numero_whatsapp", "created_at", current, (q) =>
         q.in("tipo", ["handoff_normal", "handoff_urgente", "guardrail_critico"]),
       ),
-      selectByDate(sb, "cierres_diarios", "monto", "fecha_cierre", current),
-      selectByDate(sb, "leads", "canal_origen", "primer_contacto", current),
-      sb.from("alertas").select("*", { count: "exact", head: true })
+      selectByDate(sb, "cierres_diarios", "monto,numero_whatsapp", "fecha_cierre", current),
+      sb.from("alertas")
+        .select("numero_whatsapp")
         .in("estado", ["activa", "vista"]),
       selectByDate(
         sb,
@@ -127,6 +116,20 @@ export async function GET(req: NextRequest) {
         (q) => q.eq("requiere_handoff", true),
       ),
     ]);
+
+    // Filtrar números de prueba (Libia CEO, etc) de todas las listas
+    const hCount = filtrarProduccion(leadsHoyList, numerosTest).length;
+    const aCount = filtrarProduccion(leadsAyerList, numerosTest).length;
+    const leadsCurList = filtrarProduccion(leadsCurListRaw, numerosTest);
+    const handoffsList = filtrarProduccion(handoffsListRaw, numerosTest);
+    const cierresCur = filtrarProduccion(cierresCurRaw, numerosTest);
+    const alertasActivas = filtrarProduccion(
+      (alertasActivasRaw.data ?? []) as Record<string, unknown>[],
+      numerosTest,
+    );
+    const conversacionesEnEstado = filtrarProduccion(conversacionesEnEstadoRaw, numerosTest);
+    const requierenHandoff = filtrarProduccion(requierenHandoffRaw, numerosTest);
+    const canalesData = leadsCurList;
 
     // KPI 1 leads
     const delta =
@@ -206,7 +209,7 @@ export async function GET(req: NextRequest) {
       efectividad: { pct: efectividad, total: totalLeads, con: conHandoff },
       facturacion: { pedidos, facturacion, ticket },
       canales,
-      alertasCount: alertasCountObj.count ?? 0,
+      alertasCount: alertasActivas.length,
       embudo: { etapas, cuello, conversion },
     });
   } catch (e) {
