@@ -132,6 +132,39 @@ export async function findOrCreateLead(
   throw new Error(`leads INSERT falló: ${insErr.message}`);
 }
 
+// Captura automática del subscriber_id de ManyChat.
+// ManyChat envía a sus contactos por ID interno, no por número de
+// WhatsApp. La única forma de obtener ese ID es del propio webhook
+// cuando la clienta nos escribe. Lo guardamos en config_sistema con
+// clave 'subscriber_<numero>' para que los seguimientos automáticos,
+// los handoffs y el sandbox manual puedan recuperarlo después.
+//
+// Idempotente: solo escribe si el subscriber_id cambió o no existía.
+export async function persistirSubscriberId(
+  numero: string,
+  subscriberId: string | null,
+): Promise<void> {
+  if (!numero || !subscriberId) return;
+  const sb = createAdminClient();
+  const clave = `subscriber_${numero}`;
+  const { data: existing } = await sb
+    .from("config_sistema")
+    .select("valor")
+    .eq("clave", clave)
+    .maybeSingle();
+  const previo = (existing?.valor as string | null) ?? null;
+  if (previo === subscriberId) return;
+  await sb.from("config_sistema").upsert(
+    {
+      clave,
+      valor: subscriberId,
+      descripcion: `Subscriber ID de ManyChat para ${numero} (auto-capturado del webhook)`,
+      actualizado_en: new Date().toISOString(),
+    },
+    { onConflict: "clave" },
+  );
+}
+
 // Round-robin de asesora disponible · CLAUDE.md §11 tool 4 / §12 paso 2.
 export async function pickAsesoraRoundRobin(): Promise<{
   id: string;

@@ -101,9 +101,14 @@ export async function POST(req: NextRequest) {
         ok: false,
         via: "stub",
         error:
-          "No hay subscriber_id de ManyChat para este número. ManyChat envía por ID interno, no por número. Guarda el subscriber_id de Libia en config_sistema con clave 'subscriber_" +
+          "No hay subscriber_id de ManyChat para este número todavía. " +
+          "La captura es automática: cuando este número le escriba cualquier cosa al bot, " +
+          "el webhook guarda el ID y no hace falta hacer nada más. " +
+          "Como aún no ha entrado ningún mensaje desde este número (o entró antes de activar la captura), " +
+          "abre WhatsApp del bot del negocio, manda un 'hola' desde " +
           numero +
-          "' o pásalo en el campo subscriber_id del sandbox.",
+          " y reintenta. " +
+          "Para una sola prueba puedes pegar el subscriber_id manual en el campo del sandbox.",
         texto,
         diagnostico,
       });

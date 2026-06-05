@@ -11,7 +11,7 @@ import {
   planHandoffGuardrail,
   type HandoffGuardrailPlan,
 } from "./handoff-guardrail";
-import { findOrCreateLead } from "./lead";
+import { findOrCreateLead, persistirSubscriberId } from "./lead";
 import {
   consultarLiveActivo,
   resolveSirenaUrls,
@@ -78,6 +78,10 @@ export async function runFlowMadre(input: {
   const { lead, created } = await findOrCreateLead(input.cleaned, {
     etiquetas: input.leadEtiquetas,
   });
+
+  // Captura el subscriber_id de ManyChat para futuros envíos salientes
+  // (seguimientos automáticos, sandbox manual, handoffs). Idempotente.
+  await persistirSubscriberId(numero, input.cleaned.subscriberId);
 
   // ── Paso 6: guardrails ──────────────────────────────────
   const match = checkGuardrails(input.cleaned.userText);
