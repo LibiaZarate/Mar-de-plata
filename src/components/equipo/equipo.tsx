@@ -2,6 +2,7 @@
 
 import { useAsesoras, useMetricasEquipo } from "@/lib/queries";
 import { CierresWidget } from "./cierres-widget";
+import { ColaHandoffs } from "./cola-handoffs";
 import { formatMxn } from "@/lib/utils";
 import type { Asesora } from "@/lib/types";
 
@@ -18,6 +19,8 @@ export function EquipoView() {
           {asesoras.data?.length ?? 0} asesoras activas · sin ranking, sin competencia
         </div>
       </div>
+
+      <ColaHandoffs asesoras={asesoras.data ?? []} />
 
       <div className="border border-rosey-300 bg-rosey-50/40 rounded-md px-5 py-3 text-[13px] text-foreground/75 flex items-start gap-3">
         <span className="font-italic-serif text-rosey-500 mt-0.5">nota →</span>

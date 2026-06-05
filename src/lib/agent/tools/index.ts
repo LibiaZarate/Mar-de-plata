@@ -318,8 +318,15 @@ export async function invitarGrupo(args: {
 }
 
 // ──────────────────────────────────────────────────────────
-// Tool 4 · handoff_asesora
+// Tool 4 · handoff_asesora (modelo pull con fallback)
 // ──────────────────────────────────────────────────────────
+// Cambio operativo:
+// - Si el lead ya tiene asesora habitual (asesora_asignada en leads)
+//   → asignamos directo a ella, sin pasar por la cola.
+// - Si NO → cae a la cola compartida (alertas con asesora_asignada_id
+//   NULL). El cron /api/cron/asignar-pendientes hace fallback a 5 min
+//   asignando round-robin si nadie la tomó.
+// La asesora puede tomar leads de la cola desde /equipo.
 export async function handoffAsesora(args: {
   numero_whatsapp: string;
   motivo: string;
@@ -328,49 +335,25 @@ export async function handoffAsesora(args: {
 } & CommonArgs): Promise<ToolResult> {
   const supabase = createAdminClient();
 
-  // Asesora habitual (si existe) o round-robin
+  // Asesora habitual: solo si el lead ya tenía una previamente.
   const { data: leadRow } = await supabase
     .from("leads")
     .select("asesora_asignada")
     .eq("numero_whatsapp", args.numero_whatsapp)
     .maybeSingle();
-  let asesora: { id: string; nombre_completo: string } | null = null;
+  let asesoraHabitual: { id: string; nombre_completo: string } | null = null;
   if (leadRow?.asesora_asignada) {
     const { data } = await supabase
       .from("asesoras")
       .select("id,nombre_completo")
       .eq("id", leadRow.asesora_asignada)
       .maybeSingle();
-    asesora = data
+    asesoraHabitual = data
       ? { id: data.id as string, nombre_completo: data.nombre_completo as string }
       : null;
-  }
-  if (!asesora) {
-    const { data } = await supabase
-      .from("asesoras")
-      .select("id,nombre_completo,en_onboarding,conversaciones_abiertas,ultima_asignacion")
-      .eq("activa", true)
-      .order("en_onboarding", { ascending: false })
-      .order("conversaciones_abiertas", { ascending: true })
-      .order("ultima_asignacion", { ascending: true, nullsFirst: true })
-      .limit(1)
-      .maybeSingle();
-    asesora = data
-      ? { id: data.id as string, nombre_completo: data.nombre_completo as string }
-      : null;
-  }
-  if (!asesora) {
-    return {
-      tool: "handoff_asesora",
-      ok: false,
-      outboundMessages: [],
-      notes: ["No hay asesora activa para asignar el handoff"],
-    };
   }
 
-  // Etiquetar el lead con el motivo del handoff para que las asesoras
-  // vean en el pipeline de un vistazo por qué cayó aquí. La etiqueta
-  // sigue el patrón "handoff:<motivo>" para distinguirla del resto.
+  // Etiquetar el lead con el motivo del handoff para que se vea en pipeline
   await agregarEtiquetaLeadInterna(
     supabase,
     args.numero_whatsapp,
@@ -378,26 +361,18 @@ export async function handoffAsesora(args: {
   );
 
   await supabase
-    .from("leads")
-    .update({
-      asesora_asignada: asesora.id,
-      fecha_asignacion: new Date().toISOString(),
-    })
-    .eq("numero_whatsapp", args.numero_whatsapp);
-
-  await supabase
     .from("estado_conversacion_actual")
     .update({
       requiere_handoff: true,
       prioridad_handoff: args.prioridad,
       rama_activa: "handoff",
-      paso_actual: "handoff_iniciado",
+      paso_actual: asesoraHabitual ? "handoff_iniciado" : "handoff_en_cola",
       ultimo_tool_ejecutado: "handoff_asesora",
       ultimo_timestamp: new Date().toISOString(),
     })
     .eq("numero_whatsapp", args.numero_whatsapp);
 
-  // INSERT alerta con tipo calculado
+  // INSERT alerta con asesora_asignada_id = habitual o NULL (cola).
   const isUrgent = args.prioridad === "urgente";
   const isReclamo = /reclamo/i.test(args.motivo);
   const tipoAlerta = isUrgent
@@ -411,31 +386,47 @@ export async function handoffAsesora(args: {
     titulo: `Handoff · ${args.motivo}`,
     descripcion: args.contexto_breve || "Sin contexto adicional",
     numero_whatsapp: args.numero_whatsapp,
-    asesora_asignada_id: asesora.id,
+    asesora_asignada_id: asesoraHabitual?.id ?? null,
     para_mar: isUrgent || isReclamo,
     contexto_json: {
       motivo: args.motivo,
       origen: "handoff_asesora",
-      asesora_nombre: asesora.nombre_completo,
+      asesora_nombre: asesoraHabitual?.nombre_completo ?? null,
     },
   });
 
-  // UPDATE carga de asesora
-  const { data: cargaRow } = await supabase
-    .from("asesoras")
-    .select("conversaciones_abiertas,conversaciones_dia")
-    .eq("id", asesora.id)
-    .maybeSingle();
-  await supabase
-    .from("asesoras")
-    .update({
-      conversaciones_abiertas: (cargaRow?.conversaciones_abiertas ?? 0) + 1,
-      conversaciones_dia: (cargaRow?.conversaciones_dia ?? 0) + 1,
-      ultima_asignacion: new Date().toISOString(),
-    })
-    .eq("id", asesora.id);
+  if (asesoraHabitual) {
+    // Solo cuando hay asesora habitual ya asignada, marcamos el lead
+    // y bumpeamos su carga.
+    await supabase
+      .from("leads")
+      .update({
+        asesora_asignada: asesoraHabitual.id,
+        fecha_asignacion: new Date().toISOString(),
+      })
+      .eq("numero_whatsapp", args.numero_whatsapp);
 
-  const texto = `Te paso con ${asesora.nombre_completo} — ella te atiende en breve 💎`;
+    const { data: cargaRow } = await supabase
+      .from("asesoras")
+      .select("conversaciones_abiertas,conversaciones_dia")
+      .eq("id", asesoraHabitual.id)
+      .maybeSingle();
+    await supabase
+      .from("asesoras")
+      .update({
+        conversaciones_abiertas: (cargaRow?.conversaciones_abiertas ?? 0) + 1,
+        conversaciones_dia: (cargaRow?.conversaciones_dia ?? 0) + 1,
+        ultima_asignacion: new Date().toISOString(),
+      })
+      .eq("id", asesoraHabitual.id);
+  }
+
+  // Mensaje a la clienta. Si hay habitual menciona el nombre, si no
+  // dice algo neutral (no podemos prometer quién, depende de quién
+  // tome la cola).
+  const texto = asesoraHabitual
+    ? `Te paso con ${asesoraHabitual.nombre_completo} — ella te atiende en breve 💎`
+    : `Te paso con una de nuestras asesoras — ya viene en un momento 💎`;
   const messages = [{ type: "text" as const, text: texto }];
   await sendToClient({
     subscriberId: args.subscriber_id,
@@ -454,7 +445,8 @@ export async function handoffAsesora(args: {
     parametros_tool: {
       motivo: args.motivo,
       prioridad: args.prioridad,
-      asesora: asesora.id,
+      asesora: asesoraHabitual?.id ?? null,
+      en_cola: !asesoraHabitual,
     },
   });
 
@@ -462,7 +454,11 @@ export async function handoffAsesora(args: {
     tool: "handoff_asesora",
     ok: true,
     outboundMessages: messages,
-    notes: [`Handoff a ${asesora.nombre_completo} (${tipoAlerta})`],
+    notes: [
+      asesoraHabitual
+        ? `Handoff directo a ${asesoraHabitual.nombre_completo} (asesora habitual, ${tipoAlerta})`
+        : `Handoff a cola compartida (${tipoAlerta}) — esperando que alguien la tome o fallback en 5 min`,
+    ],
   };
 }
 
