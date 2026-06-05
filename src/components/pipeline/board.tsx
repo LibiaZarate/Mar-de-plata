@@ -181,6 +181,9 @@ function LeadCard({ lead, adsMap }: { lead: Lead; adsMap?: AdsMap }) {
   const etiquetas = lead.etiquetas ?? [];
   const isTest = etiquetas.includes("playground");
   const piezaPersonalizada = etiquetas.includes("pieza_personalizada");
+  const handoffMotivo = etiquetas
+    .find((e) => e.startsWith("handoff:"))
+    ?.slice("handoff:".length);
   const adInfo = lead.anuncio_id ? adsMap?.get(lead.anuncio_id) : undefined;
   // Si no tenemos el ad cacheado pero hay anuncio_id, mostramos el ID truncado.
   const adLabel = adInfo
@@ -245,6 +248,7 @@ function LeadCard({ lead, adsMap }: { lead: Lead; adsMap?: AdsMap }) {
             💎 Personalizada · revisar imagen
           </span>
         )}
+        {handoffMotivo && <HandoffMotivoChip motivo={handoffMotivo} />}
       </div>
       {next && (
         <button
@@ -290,5 +294,34 @@ function FilterSelect({
       </select>
       <span className="absolute right-2 top-1/2 -translate-y-1/2 text-foreground/55 pointer-events-none">▾</span>
     </div>
+  );
+}
+
+const HANDOFF_LABELS: Record<string, { emoji: string; nombre: string; tono: string }> = {
+  visita_presencial: { emoji: "📍", nombre: "Quiere visitar local", tono: "border-skyy-300 bg-skyy-50 text-skyy-500" },
+  compra_en_vivo: { emoji: "🎥", nombre: "Comprando en vivo", tono: "border-rosey-300 bg-rosey-50 text-rosey-500" },
+  personalizado: { emoji: "💎", nombre: "Pieza personalizada", tono: "border-lila-300 bg-lila-50 text-lila-500" },
+  lista_pedido: { emoji: "🛒", nombre: "Lista para pedido", tono: "border-sage-300 bg-sage-50 text-sage-600" },
+  mayoreo_cotizacion: { emoji: "💰", nombre: "Cotización mayoreo", tono: "border-ambr-300 bg-ambr-50 text-ambr-600" },
+  reclamo: { emoji: "⚠️", nombre: "Reclamo", tono: "border-rosey-400 bg-rosey-100 text-rosey-600" },
+  solicitud_explicita: { emoji: "🙋‍♀️", nombre: "Pidió hablar con humana", tono: "border-foreground/30 bg-cream-100 text-foreground" },
+};
+
+function HandoffMotivoChip({ motivo }: { motivo: string }) {
+  const info = HANDOFF_LABELS[motivo] ?? {
+    emoji: "👤",
+    nombre: motivo.replace(/_/g, " "),
+    tono: "border-foreground/30 bg-cream-100 text-foreground",
+  };
+  return (
+    <span
+      className={cn(
+        "text-[10px] font-medium px-1.5 py-0.5 rounded border",
+        info.tono,
+      )}
+      title={`Handoff a asesora · motivo: ${info.nombre}`}
+    >
+      {info.emoji} {info.nombre}
+    </span>
   );
 }

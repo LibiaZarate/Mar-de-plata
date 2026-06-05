@@ -368,6 +368,15 @@ export async function handoffAsesora(args: {
     };
   }
 
+  // Etiquetar el lead con el motivo del handoff para que las asesoras
+  // vean en el pipeline de un vistazo por qué cayó aquí. La etiqueta
+  // sigue el patrón "handoff:<motivo>" para distinguirla del resto.
+  await agregarEtiquetaLeadInterna(
+    supabase,
+    args.numero_whatsapp,
+    `handoff:${args.motivo}`,
+  );
+
   await supabase
     .from("leads")
     .update({
@@ -633,4 +642,24 @@ export async function agendarVisitaTaxco(args: {
       `Imagen #${idImagen} (${args.dia}) + maps enviados · esperando confirmación de handoff`,
     ],
   };
+}
+
+// Añade una etiqueta a leads.etiquetas (TEXT[]) sin duplicar.
+// Usada por las tools que necesitan dejar rastro en el pipeline.
+async function agregarEtiquetaLeadInterna(
+  supabase: ReturnType<typeof createAdminClient>,
+  numero: string,
+  etiqueta: string,
+): Promise<void> {
+  const { data } = await supabase
+    .from("leads")
+    .select("etiquetas")
+    .eq("numero_whatsapp", numero)
+    .maybeSingle();
+  const actuales = (data?.etiquetas as string[] | null) ?? [];
+  if (actuales.includes(etiqueta)) return;
+  await supabase
+    .from("leads")
+    .update({ etiquetas: [...actuales, etiqueta] })
+    .eq("numero_whatsapp", numero);
 }
