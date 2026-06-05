@@ -494,9 +494,16 @@ function PanelPruebasContextuales() {
   const [tipo, setTipo] = useState("lead_frio_24h");
   const [modo, setModo] = useState<"plantilla" | "libre">("plantilla");
   const [textoLibre, setTextoLibre] = useState("");
+  const [subscriberOverride, setSubscriberOverride] = useState("");
   const [preview, setPreview] = useState<{ texto: string; snapshot: SnapshotPreview } | null>(null);
   const [enviando, setEnviando] = useState(false);
-  const [mensaje, setMensaje] = useState<{ tono: "ok" | "err"; texto: string } | null>(null);
+  const [mensaje, setMensaje] = useState<{
+    tono: "ok" | "err";
+    texto: string;
+    diagnostico?: Record<string, unknown>;
+    via?: string;
+    status?: number;
+  } | null>(null);
 
   const opciones = plantillas.data?.plantillas ?? [];
   const numerosTest = numeros.data?.numeros ?? [];
@@ -525,6 +532,7 @@ function PanelPruebasContextuales() {
     const body: Record<string, unknown> = { numero };
     if (modo === "plantilla") body.tipo = tipo;
     else body.texto_libre = textoLibre;
+    if (subscriberOverride.trim()) body.subscriber_id = subscriberOverride.trim();
     const r = await fetch("/api/seguimientos/enviar-manual", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -533,12 +541,21 @@ function PanelPruebasContextuales() {
     const d = await r.json();
     setEnviando(false);
     if (!d.ok) {
-      setMensaje({ tono: "err", texto: d.error ?? "Falló el envío" });
+      setMensaje({
+        tono: "err",
+        texto: d.error ?? "Falló el envío",
+        diagnostico: d.diagnostico,
+        via: d.via,
+        status: d.status,
+      });
       return;
     }
     setMensaje({
       tono: "ok",
-      texto: `Enviado vía ${d.via}${d.via === "stub" ? " (sin MANYCHAT_API_KEY o sin subscriber_id)" : ""}`,
+      texto: `Enviado vía ${d.via} (HTTP ${d.status}). Revisa tu WhatsApp.`,
+      diagnostico: d.diagnostico,
+      via: d.via,
+      status: d.status,
     });
     mutate("/api/seguimientos/recientes");
   }
@@ -646,6 +663,24 @@ function PanelPruebasContextuales() {
             </div>
           )}
 
+          <div>
+            <label className="text-[11px] text-foreground/60 font-medium uppercase tracking-wide">
+              Subscriber ID de ManyChat (opcional)
+            </label>
+            <input
+              value={subscriberOverride}
+              onChange={(e) => setSubscriberOverride(e.target.value)}
+              placeholder="déjalo vacío para usar el guardado en config_sistema"
+              className="mt-1 w-full text-sm px-3 py-1.5 rounded border border-foreground/20 bg-cream-50 font-mono"
+            />
+            <div className="text-[10px] text-foreground/55 mt-1 leading-snug">
+              ManyChat envía por su ID interno de suscriptor, no por número.
+              Si nunca has guardado el tuyo, pégalo aquí. Para obtenerlo: en
+              ManyChat busca tu contacto y copia el subscriber ID de la URL
+              o del panel.
+            </div>
+          </div>
+
           <div className="flex gap-2 pt-1">
             <button
               onClick={previsualizar}
@@ -666,18 +701,40 @@ function PanelPruebasContextuales() {
           {mensaje && (
             <div
               className={cn(
-                "text-[12px] px-3 py-2 rounded border flex items-start gap-2",
+                "text-[12px] px-3 py-2 rounded border space-y-2",
                 mensaje.tono === "ok"
                   ? "border-sage-300 bg-sage-50/40 text-sage-700"
                   : "border-rosey-300 bg-rosey-50/40 text-rosey-600",
               )}
             >
-              {mensaje.tono === "ok" ? (
-                <Check className="h-3.5 w-3.5 mt-0.5" />
-              ) : (
-                <AlertCircle className="h-3.5 w-3.5 mt-0.5" />
+              <div className="flex items-start gap-2">
+                {mensaje.tono === "ok" ? (
+                  <Check className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                ) : (
+                  <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                )}
+                <span>{mensaje.texto}</span>
+              </div>
+              {mensaje.diagnostico && (
+                <div className="text-[11px] grid grid-cols-2 gap-x-3 gap-y-0.5 pl-5">
+                  <span className="text-foreground/55">MANYCHAT_API_KEY:</span>
+                  <span className="font-mono">
+                    {mensaje.diagnostico.manychat_api_key_presente ? "✓ presente" : "✗ ausente"}
+                  </span>
+                  <span className="text-foreground/55">subscriber_id:</span>
+                  <span className="font-mono">
+                    {mensaje.diagnostico.subscriber_id_presente
+                      ? `✓ (${mensaje.diagnostico.subscriber_id_origen})`
+                      : "✗ ausente"}
+                  </span>
+                  {mensaje.status !== undefined && (
+                    <>
+                      <span className="text-foreground/55">HTTP:</span>
+                      <span className="font-mono">{mensaje.status}</span>
+                    </>
+                  )}
+                </div>
               )}
-              {mensaje.texto}
             </div>
           )}
         </div>
