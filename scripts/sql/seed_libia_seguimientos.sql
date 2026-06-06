@@ -6,6 +6,23 @@
 -- El cron de seguimientos corre cada 15 min, así que el de "+10 min"
 -- puede tardar hasta 20 min en dispararse en la práctica.
 
+-- 0. Extender el CHECK constraint para admitir los tipos nuevos
+-- (prueba_simulador para el sandbox / playground, texto_libre_manual
+-- para envíos manuales sin plantilla). El n8n viejo solo conocía 4.
+ALTER TABLE seguimientos_programados
+  DROP CONSTRAINT IF EXISTS seguimientos_programados_tipo_check;
+
+ALTER TABLE seguimientos_programados
+  ADD CONSTRAINT seguimientos_programados_tipo_check
+  CHECK (tipo IN (
+    'lead_frio_24h',
+    'post_compra_7d',
+    'deposito_pendiente_24h',
+    'reactivacion_30d',
+    'prueba_simulador',
+    'texto_libre_manual'
+  ));
+
 -- 1. Seguimiento de prueba en 10 minutos (descartable)
 INSERT INTO seguimientos_programados (
   numero_whatsapp, tipo, ejecutar_en, contexto
