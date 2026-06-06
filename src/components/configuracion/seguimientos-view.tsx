@@ -477,7 +477,7 @@ function Cola() {
 type NumeroTest = { numero_whatsapp: string; nombre: string | null; etiquetas: string[] | null };
 type SnapshotPreview = Record<string, unknown>;
 
-const LIBIA_NUM = "5216682322911";
+const LIBIA_NUM = "526682322911";
 
 function PanelPruebasContextuales() {
   const numeros = useSWR<{ ok: boolean; numeros: NumeroTest[] }>(
@@ -590,7 +590,8 @@ function PanelPruebasContextuales() {
               }}
               className="mt-1 w-full text-sm px-3 py-1.5 rounded border border-foreground/20 bg-cream-50"
             >
-              <option value={LIBIA_NUM}>Libia (CEO) · +52 668 232 2911</option>
+              <option value={LIBIA_NUM}>Libia (CEO) · +52 668 232 2911 (formato corto)</option>
+              <option value="5216682322911">Libia (CEO) · +52 1 668 232 2911 (formato largo)</option>
               {numerosTest
                 .filter((n) => n.numero_whatsapp !== LIBIA_NUM)
                 .map((n) => (

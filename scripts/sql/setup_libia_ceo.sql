@@ -1,15 +1,26 @@
 -- Registra a Libia (CEO) como número de prueba oficial.
 -- Corre esto UNA VEZ en el SQL editor de Supabase.
 --
--- Efectos:
--- 1. Crea/actualiza la fila en `leads` con número +5216682322911 marcada
---    como 'test' + 'admin:libia'.
--- 2. El trigger crear_estado_conversacion poblará estado_conversacion_actual.
--- 3. A partir de ahí, todas las queries del dashboard filtran este número:
---    pipeline, KPIs, embudo, alertas, cola de equipo.
--- 4. La UI de /configuracion/seguimientos la ve como "Libia (CEO)" en el
---    selector del sandbox para mandar pruebas.
+-- Nota sobre el número: WhatsApp México acepta dos formatos para el
+-- mismo celular: con el 1 (52 1 668...) o sin el 1 (52 668...).
+-- ManyChat los trata como contactos distintos. El número que de hecho
+-- usa Libia en su WhatsApp es el corto: 526682322911.
+-- Este script registra el corto como principal y deja el largo
+-- también marcado como test por si en algún momento llega tráfico
+-- desde el otro formato (así no contamina métricas).
 
+-- 1. Si quedó la fila vieja del setup previo con el formato largo,
+--    la marcamos como test pero no la borramos (puede tener historial)
+UPDATE leads
+SET nombre = 'Libia (CEO) — formato largo',
+    etiquetas = (
+      SELECT ARRAY(SELECT DISTINCT UNNEST(
+        COALESCE(etiquetas, '{}'::text[]) || ARRAY['test', 'admin:libia']
+      ))
+    )
+WHERE numero_whatsapp = '5216682322911';
+
+-- 2. Upsert del número real (formato corto)
 INSERT INTO leads (
   numero_whatsapp,
   nombre,
@@ -20,12 +31,12 @@ INSERT INTO leads (
   etiquetas,
   ciudad
 ) VALUES (
-  '5216682322911',
+  '526682322911',
   'Libia (CEO)',
   'MX',
   'mayoreo',
   'lead_nueva',
-  'whatsapp_directo',
+  NULL,
   ARRAY['test', 'admin:libia'],
   'CDMX'
 )
@@ -37,7 +48,12 @@ SET nombre    = 'Libia (CEO)',
       ))
     );
 
--- Verificación
+-- 3. Verificación
 SELECT numero_whatsapp, nombre, etiquetas, estado, tipo
 FROM leads
-WHERE numero_whatsapp = '5216682322911';
+WHERE numero_whatsapp IN ('526682322911', '5216682322911');
+
+-- 4. Ver si ya hay subscriber_id capturado para alguno
+SELECT clave, valor
+FROM config_sistema
+WHERE clave IN ('subscriber_526682322911', 'subscriber_5216682322911');
