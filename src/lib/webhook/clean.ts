@@ -16,6 +16,7 @@ export type CleanedPayload = {
   userText: string;
   whatsappPhone: string | null;
   email: string | null;
+  nombre: string | null;
   timezone: string;
   tipoMensajeOriginal: "texto" | "audio";
   canalOrigen: string;
@@ -23,6 +24,19 @@ export type CleanedPayload = {
   subscriberId: string | null;
   attribution: Attribution;
 };
+
+// ManyChat envía el nombre del contacto cuando lo conoce. Lo arma con
+// los campos estándar de Meta (first_name / last_name) o el name plano.
+// Si todos vienen vacíos, devolvemos null y el lead queda sin nombre
+// hasta que el agente lo pregunte o lo deduzca.
+function extraerNombre(body: Record<string, unknown>): string | null {
+  const directo = clean(body.name as string)?.trim();
+  if (directo) return directo;
+  const first = clean(body.first_name as string)?.trim() ?? "";
+  const last = clean(body.last_name as string)?.trim() ?? "";
+  const combinado = `${first} ${last}`.trim();
+  return combinado.length > 0 ? combinado : null;
+}
 
 function clean<T>(v: T | T[] | null | undefined): T | null {
   if (Array.isArray(v)) return v[0] ?? null;
@@ -184,6 +198,7 @@ export function cleanManychatBody(body: Record<string, unknown>): CleanedPayload
     userText: userTextLimpio,
     whatsappPhone,
     email: clean(body.email as string),
+    nombre: extraerNombre(body),
     timezone: clean(body.timezone as string) || "America/Mexico_City",
     tipoMensajeOriginal,
     canalOrigen,

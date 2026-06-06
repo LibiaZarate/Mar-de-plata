@@ -162,6 +162,25 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Lo guardamos ADEMÁS en seguimientos_programados marcado como ya
+    // ejecutado. Así el pipeline cuenta los manuales igual que los
+    // automáticos del cron y la columna "Seguimiento" funciona.
+    const ahora = new Date().toISOString();
+    await sb.from("seguimientos_programados").insert({
+      numero_whatsapp: numero,
+      tipo: body.tipo ?? "texto_libre_manual",
+      ejecutar_en: ahora,
+      ejecutado_en: ahora,
+      mensaje_enviado: texto,
+      resultado: ok ? "enviado · manual" : `error · manual http ${status}`,
+      contexto: {
+        snapshot,
+        programado_desde: "sandbox_manual",
+        subscriber_id_origen: subscriberSource,
+        http_status: status,
+      },
+    });
+
     return NextResponse.json({
       ok,
       via: "manychat",

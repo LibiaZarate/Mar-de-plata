@@ -131,6 +131,11 @@ export function LeadDetailDrawer({
         )}
         {data?.ok && (
           <div className="p-5 space-y-5">
+            <ResumenSection
+              lead={data.lead}
+              snapshot={data.snapshot}
+              seguimientos={data.seguimientos}
+            />
             <ChipsSection chips={data.etiquetas} />
             <DatosSection lead={data.lead} />
             <SeguimientosSection
@@ -141,6 +146,114 @@ export function LeadDetailDrawer({
           </div>
         )}
       </aside>
+    </div>
+  );
+}
+
+// Genera un párrafo legible con lo que ha pasado con este lead.
+// Sirve para que Mar/asesoras lean de un vistazo el estado en vez de
+// tener que decodificar tags.
+function armarResumen(
+  lead: LeadDetail["lead"],
+  snapshot: Record<string, unknown>,
+  seguimientos: Seguimiento[],
+): string {
+  const partes: string[] = [];
+  const nombre = lead.nombre?.trim() || "Sin nombre identificado";
+  const canal = (snapshot.canal_origen as string) || lead.canal_origen || "canal desconocido";
+  const ciudad = lead.ciudad;
+  partes.push(
+    `${nombre} entró por ${canal}${ciudad ? ` desde ${ciudad}` : ""}.`,
+  );
+
+  const compras = Number(snapshot.compras_totales ?? lead.compras_totales ?? 0);
+  if (compras > 0) {
+    const monto = Number(snapshot.monto_acumulado ?? lead.monto_acumulado ?? 0);
+    partes.push(
+      `Es recurrente: ${compras} ${compras === 1 ? "compra previa" : "compras previas"}${
+        monto > 0 ? ` por ${formatMxn(monto)}` : ""
+      }.`,
+    );
+  } else {
+    partes.push("Es primera vez.");
+  }
+
+  const catalogo = snapshot.catalogo_visto as string | null;
+  if (catalogo) partes.push(`Le mandamos el catálogo de ${catalogo}.`);
+
+  const rama = snapshot.rama_activa as string | null;
+  if (rama) partes.push(`Rama activa: ${rama}.`);
+
+  if (snapshot.deposito_dado) {
+    partes.push(
+      snapshot.deposito_validado
+        ? "Su depósito está validado."
+        : "Ya dejó depósito (pendiente de validar).",
+    );
+  } else if (snapshot.intencion_compra_detectada) {
+    partes.push("Mostró intención de compra pero todavía no deposita.");
+  }
+
+  if (snapshot.objecion_detectada) {
+    partes.push(`Quedó pendiente la objeción: ${snapshot.objecion_detectada}.`);
+  }
+
+  // Seguimientos
+  const enviados = seguimientos.filter((s) => s.estado_render === "enviado");
+  const pendientes = seguimientos.filter(
+    (s) => s.estado_render === "pendiente" || s.estado_render === "pendiente_atrasado",
+  );
+  if (enviados.length > 0) {
+    const ultimo = enviados[0];
+    const fecha = new Date(ultimo.ejecutado_en ?? ultimo.ejecutar_en);
+    const horas = Math.round((Date.now() - fecha.getTime()) / 3_600_000);
+    const hace = horas < 1
+      ? "hace menos de 1 hora"
+      : horas < 24
+        ? `hace ${horas} horas`
+        : `hace ${Math.round(horas / 24)} días`;
+    partes.push(
+      `Le hemos enviado ${enviados.length} seguimiento${enviados.length === 1 ? "" : "s"} (último ${hace}).`,
+    );
+  }
+  if (pendientes.length > 0) {
+    const prox = pendientes[pendientes.length - 1];
+    partes.push(
+      `Hay ${pendientes.length} seguimiento${pendientes.length === 1 ? "" : "s"} programado${pendientes.length === 1 ? "" : "s"}, próximo: ${new Date(prox.ejecutar_en).toLocaleString("es-MX")}.`,
+    );
+  }
+  if (enviados.length === 0 && pendientes.length === 0) {
+    partes.push("Aún no se le ha enviado ningún seguimiento.");
+  }
+
+  const horasInactiva = snapshot.horas_desde_ultima_interaccion as number | null;
+  if (horasInactiva != null) {
+    partes.push(
+      horasInactiva < 1
+        ? "Acaba de escribir."
+        : horasInactiva < 24
+          ? `Lleva ${horasInactiva} horas sin interactuar.`
+          : `Lleva ${Math.round(horasInactiva / 24)} días sin escribir.`,
+    );
+  }
+
+  return partes.join(" ");
+}
+
+function ResumenSection({
+  lead,
+  snapshot,
+  seguimientos,
+}: {
+  lead: LeadDetail["lead"];
+  snapshot: Record<string, unknown>;
+  seguimientos: Seguimiento[];
+}) {
+  const texto = armarResumen(lead, snapshot, seguimientos);
+  return (
+    <div className="rounded-lg border border-rosey-200 bg-rosey-50/30 px-4 py-3">
+      <div className="label-xs mb-1.5">Resumen automático</div>
+      <p className="text-[13px] leading-relaxed">{texto}</p>
     </div>
   );
 }

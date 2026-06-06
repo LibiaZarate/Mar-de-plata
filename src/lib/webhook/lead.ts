@@ -59,16 +59,25 @@ export async function findOrCreateLead(
     // Si vino con etiquetas extra (ej. playground), garantizamos que estén
     // en el array de etiquetas existente sin duplicar.
     const extras = options?.etiquetas ?? [];
+    const updates: Record<string, unknown> = {};
     if (extras.length > 0) {
       const current = (existing.etiquetas as string[] | null) ?? [];
       const merged = Array.from(new Set([...current, ...extras]));
       if (merged.length !== current.length) {
-        await supabase
-          .from("leads")
-          .update({ etiquetas: merged })
-          .eq("numero_whatsapp", numero);
+        updates.etiquetas = merged;
         (existing as Lead & { etiquetas: string[] }).etiquetas = merged;
       }
+    }
+    // Si ManyChat ahora conoce el nombre y antes no lo teníamos, lo
+    // guardamos. Nunca pisamos un nombre que ya existía (puede haber
+    // sido editado a mano).
+    const nombreActual = (existing.nombre as string | null)?.trim();
+    if (!nombreActual && cleaned.nombre) {
+      updates.nombre = cleaned.nombre;
+      (existing as Lead).nombre = cleaned.nombre;
+    }
+    if (Object.keys(updates).length > 0) {
+      await supabase.from("leads").update(updates).eq("numero_whatsapp", numero);
     }
     return { lead: existing as Lead, created: false };
   }
@@ -94,6 +103,7 @@ export async function findOrCreateLead(
     monto_acumulado: 0,
     reclamos_historicos: 0,
   };
+  if (cleaned.nombre) baseInsert.nombre = cleaned.nombre;
   if (etiquetas.length > 0) baseInsert.etiquetas = etiquetas;
 
   const { data: inserted, error: insErr } = await supabase
@@ -117,6 +127,7 @@ export async function findOrCreateLead(
       monto_acumulado: 0,
       reclamos_historicos: 0,
     };
+    if (cleaned.nombre) minInsert.nombre = cleaned.nombre;
     if (etiquetas.length > 0) minInsert.etiquetas = etiquetas;
     const { data: retry, error: retryErr } = await supabase
       .from("leads")

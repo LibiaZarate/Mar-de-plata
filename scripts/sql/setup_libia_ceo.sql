@@ -42,11 +42,19 @@ INSERT INTO leads (
 )
 ON CONFLICT (numero_whatsapp) DO UPDATE
 SET nombre    = 'Libia (CEO)',
+    ciudad    = COALESCE(leads.ciudad, 'CDMX'),
     etiquetas = (
       SELECT ARRAY(SELECT DISTINCT UNNEST(
         COALESCE(leads.etiquetas, '{}'::text[]) || ARRAY['test', 'admin:libia']
       ))
     );
+
+-- 2b. Force-set del nombre si la fila ya existía sin él (por si el
+-- webhook la creó antes de la captura automática)
+UPDATE leads
+SET nombre = 'Libia (CEO)'
+WHERE numero_whatsapp IN ('526682322911', '5216682322911')
+  AND (nombre IS NULL OR nombre = '' OR nombre LIKE 'Sin nombre%');
 
 -- 3. Verificación
 SELECT numero_whatsapp, nombre, etiquetas, estado, tipo

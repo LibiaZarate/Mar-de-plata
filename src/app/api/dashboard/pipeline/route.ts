@@ -4,7 +4,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { obtenerNumerosTest, filtrarProduccion } from "@/lib/test-leads";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,11 +26,11 @@ export async function GET(req: NextRequest) {
     const { data, error } = await q;
     if (error) throw new Error(error.message);
 
-    const numerosTest = await obtenerNumerosTest(sb);
-    const leads = filtrarProduccion(
-      (data ?? []) as { numero_whatsapp?: string }[],
-      numerosTest,
-    );
+    // En el pipeline SÍ mostramos los leads de prueba (Libia, etc) para
+    // que se vea moverse la tarjeta y se prueben los flujos completos.
+    // El filtro test sigue aplicado en /api/dashboard/inicio y otros
+    // endpoints de métricas agregadas.
+    const leads = (data ?? []) as { numero_whatsapp?: string }[];
 
     // Para cada lead, contar seguimientos pendientes y mirar último enviado.
     const numeros = leads
