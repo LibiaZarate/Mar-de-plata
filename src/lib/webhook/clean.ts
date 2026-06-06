@@ -43,6 +43,24 @@ function clean<T>(v: T | T[] | null | undefined): T | null {
   return v ?? null;
 }
 
+// Normalización del número de WhatsApp para evitar que el mismo
+// contacto aparezca bajo dos formatos. WhatsApp México acepta dos:
+//   52 1 668 232 2911 (13 dígitos)  ← el viejo
+//   52 668 232 2911   (12 dígitos)  ← el nuevo
+// ManyChat puede mandar cualquiera. Canonicalizamos al CORTO
+// (sin el 1 después del 52) que es el que de facto usa WhatsApp hoy.
+// Solo se aplica a México. Otros países no se tocan.
+export function normalizarNumeroWhatsapp(raw: string | null): string | null {
+  if (!raw) return raw;
+  const digitos = raw.replace(/\D/g, "");
+  if (!digitos) return null;
+  // México largo (521...) → México corto (52...)
+  if (/^521\d{10}$/.test(digitos)) {
+    return "52" + digitos.slice(3);
+  }
+  return digitos;
+}
+
 // Parsea string tipo "campaign_id=123&ad_id=456&adset_id=789" o "?campaign_id=..."
 // o un objeto JSON con esas keys.
 function parseRef(raw: unknown): Partial<Attribution> {
@@ -163,8 +181,10 @@ function mapearCodigoACanal(codigo: string): string {
 }
 
 export function cleanManychatBody(body: Record<string, unknown>): CleanedPayload {
-  const whatsappPhone = clean(body.whatsapp_phone as string);
-  const phone = clean(body.phone as string);
+  const whatsappPhoneRaw = clean(body.whatsapp_phone as string);
+  const phoneRaw = clean(body.phone as string);
+  const whatsappPhone = normalizarNumeroWhatsapp(whatsappPhoneRaw);
+  const phone = normalizarNumeroWhatsapp(phoneRaw);
   const igId = clean(body.ig_id as string);
   const subscriberId =
     clean(body.id as string) ?? clean(body.subscriber_id as string);

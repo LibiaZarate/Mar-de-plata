@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolverPlantilla, renderConSnapshot } from "@/lib/seguimientos/templates";
 import { construirSnapshot } from "@/lib/seguimientos/snapshot";
+import { normalizarNumeroWhatsapp } from "@/lib/webhook/clean";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,13 +39,19 @@ export async function POST(req: NextRequest) {
     }
 
     const sb = createAdminClient();
-    const numero = body.numero.replace(/\D/g, "");
+    const numero = normalizarNumeroWhatsapp(body.numero) ?? "";
     if (!numero) {
       return NextResponse.json(
         { ok: false, error: "Número inválido" },
         { status: 400 },
       );
     }
+
+    // Fallback: si el subscriber_id no aparece bajo el formato corto,
+    // probamos el largo (521…) por si el lead viejo quedó persistido
+    // con el formato anterior.
+    const variantesNumero = [numero];
+    if (/^52\d{10}$/.test(numero)) variantesNumero.push("521" + numero.slice(2));
 
     const snapshot = await construirSnapshot(sb, numero, null);
 
@@ -65,14 +72,18 @@ export async function POST(req: NextRequest) {
     let subscriberId: string | null = body.subscriber_id?.trim() || null;
     let subscriberSource: "body" | "config" | "ninguno" = subscriberId ? "body" : "ninguno";
     if (!subscriberId) {
-      const { data: subRow } = await sb
+      const claves = variantesNumero.map((n) => `subscriber_${n}`);
+      const { data: subRows } = await sb
         .from("config_sistema")
-        .select("valor")
-        .eq("clave", `subscriber_${numero}`)
-        .maybeSingle();
-      const v = (subRow?.valor as string | null) ?? null;
-      if (v && v.trim()) {
-        subscriberId = v.trim();
+        .select("clave,valor")
+        .in("clave", claves);
+      const row = (subRows ?? []).find((r) => {
+        const v = (r.valor as string | null)?.trim();
+        return v && v.length > 0;
+      });
+      const v = (row?.valor as string | null)?.trim();
+      if (v) {
+        subscriberId = v;
         subscriberSource = "config";
       }
     }

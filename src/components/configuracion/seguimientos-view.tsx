@@ -58,11 +58,131 @@ export function SeguimientosView() {
       </div>
 
       <MigracionAviso />
+      <PanelDebugNumeros />
       <PanelLibia />
       <Plantillas />
       <Probar />
       <Cola />
     </div>
+  );
+}
+
+// Buscador rápido para diagnosticar bajo qué formato está guardado
+// un contacto. Útil cuando ManyChat guarda un número y la app espera
+// otro (con/sin el 1 después de 52).
+function PanelDebugNumeros() {
+  const [q, setQ] = useState("");
+  const [data, setData] = useState<{
+    leads: Array<{
+      numero_whatsapp: string;
+      nombre: string | null;
+      etiquetas: string[] | null;
+      ultima_interaccion: string | null;
+      subscriber_id: string | null;
+    }>;
+    subscribers_huerfanos: Array<{ numero_implicito: string; valor: string }>;
+  } | null>(null);
+  const [cargando, setCargando] = useState(false);
+
+  async function buscar() {
+    if (!q.trim()) return;
+    setCargando(true);
+    const r = await fetch(`/api/debug/lead-buscar?q=${encodeURIComponent(q)}`);
+    const d = await r.json();
+    setCargando(false);
+    if (!d.ok) {
+      alert(d.error);
+      return;
+    }
+    setData({ leads: d.leads, subscribers_huerfanos: d.subscribers_huerfanos });
+  }
+
+  return (
+    <details className="rounded-lg border border-skyy-200 bg-skyy-50/30">
+      <summary className="cursor-pointer px-4 py-3 text-[13px] font-medium flex items-center gap-2">
+        <AlertCircle className="h-4 w-4 text-skyy-500" />
+        Diagnóstico: ¿bajo qué número está guardado mi contacto?
+      </summary>
+      <div className="px-4 pb-4 space-y-3">
+        <div className="text-[12px] text-foreground/65 leading-relaxed">
+          Si tu seguimiento no se manda porque “falta subscriber_id”, normalmente es
+          que el contacto está guardado bajo un formato distinto al que estás probando
+          (con/sin el 1 después de 52). Busca por nombre o por las últimas 4–6 cifras
+          para ver qué hay realmente en la base.
+        </div>
+        <div className="flex gap-2">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && buscar()}
+            placeholder="libia, 322911, 2911..."
+            className="flex-1 text-sm px-3 py-1.5 rounded border border-foreground/20 bg-cream-50"
+          />
+          <button
+            onClick={buscar}
+            disabled={cargando || !q.trim()}
+            className="text-[12px] px-3 py-1.5 rounded bg-skyy-300 hover:bg-skyy-400 text-cream-50 disabled:opacity-50"
+          >
+            {cargando ? "Buscando…" : "Buscar"}
+          </button>
+        </div>
+
+        {data && (
+          <div className="space-y-2">
+            <div className="text-[11px] text-foreground/55 uppercase tracking-wide">
+              Leads encontrados ({data.leads.length})
+            </div>
+            {data.leads.length === 0 && (
+              <div className="text-[12px] italic text-foreground/50">Sin coincidencias.</div>
+            )}
+            {data.leads.map((l) => (
+              <div
+                key={l.numero_whatsapp}
+                className="text-[12px] bg-cream-50 border border-foreground/15 rounded px-3 py-2"
+              >
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="font-mono font-medium">{l.numero_whatsapp}</span>
+                  <span
+                    className={cn(
+                      "text-[10px] uppercase tracking-wide",
+                      l.subscriber_id ? "text-sage-700" : "text-rosey-500",
+                    )}
+                  >
+                    {l.subscriber_id
+                      ? `subscriber ✓ ${l.subscriber_id}`
+                      : "sin subscriber"}
+                  </span>
+                </div>
+                <div className="text-foreground/65">
+                  {l.nombre ?? <span className="italic">sin nombre</span>}
+                </div>
+                {(l.etiquetas ?? []).length > 0 && (
+                  <div className="text-[10px] text-foreground/55">
+                    etiquetas: {l.etiquetas?.join(", ")}
+                  </div>
+                )}
+              </div>
+            ))}
+            {data.subscribers_huerfanos.length > 0 && (
+              <>
+                <div className="text-[11px] text-foreground/55 uppercase tracking-wide pt-2">
+                  Subscribers sin lead asociado
+                </div>
+                {data.subscribers_huerfanos.map((h) => (
+                  <div
+                    key={h.numero_implicito}
+                    className="text-[12px] bg-ambr-50 border border-ambr-300 rounded px-3 py-2"
+                  >
+                    <span className="font-mono">{h.numero_implicito}</span> →{" "}
+                    <span className="font-mono text-foreground/65">{h.valor}</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </details>
   );
 }
 
