@@ -7,6 +7,14 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+  "CDN-Cache-Control": "no-store",
+  "Vercel-CDN-Cache-Control": "no-store",
+} as const;
 
 export async function GET(req: NextRequest) {
   try {
@@ -88,11 +96,11 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return NextResponse.json({ ok: true, leads: leadsEnriquecidos });
+    return NextResponse.json({ ok: true, leads: leadsEnriquecidos }, { headers: NO_STORE_HEADERS });
   } catch (e) {
     return NextResponse.json(
       { ok: false, error: (e as Error).message, leads: [] },
-      { status: 500 },
+      { status: 500, headers: NO_STORE_HEADERS },
     );
   }
 }
