@@ -6,6 +6,19 @@ import { useAsesoras, usePipelineLeads, STAGE_LABEL } from "@/lib/queries";
 import { actualizarEstadoLead } from "@/lib/actions";
 import { cn, formatMxn } from "@/lib/utils";
 import type { Lead, LeadEstado } from "@/lib/types";
+import { LeadDetailDrawer } from "./lead-detail-drawer";
+
+type LeadConSeg = Lead & {
+  seguimientos_pendientes?: number;
+  seguimientos_enviados?: number;
+  ultimo_seguimiento_en?: string | null;
+};
+
+// Etapas visibles del kanban. "seguimiento" es virtual: no existe como
+// estado en la tabla leads, se computa al vuelo en `clasificar()` cuando
+// el lead tiene seguimientos pendientes o ya enviados estando todavía
+// en lead_nueva o calificada.
+type PipelineStage = "lead_nueva" | "calificada" | "seguimiento" | "esperando_pago" | "pagada";
 
 type AdInfo = { name: string; campaign_id: string; campaign_name: string };
 type AdsMap = Map<string, AdInfo>;
@@ -28,15 +41,54 @@ const adsFetcher = async (url: string): Promise<AdsMap> => {
   return map;
 };
 
-const STAGES: LeadEstado[] = ["lead_nueva", "calificada", "esperando_pago", "pagada"];
+const STAGES: PipelineStage[] = [
+  "lead_nueva",
+  "calificada",
+  "seguimiento",
+  "esperando_pago",
+  "pagada",
+];
 
-const STAGE_TONE: Record<LeadEstado, { border: string; chip: string }> = {
-  lead_nueva:     { border: "border-skyy-300",       chip: "text-skyy-500" },
-  calificada:     { border: "border-lila-300",       chip: "text-lila-500" },
-  esperando_pago: { border: "border-ambr-300",       chip: "text-ambr-500" },
-  pagada:         { border: "border-sage-300",       chip: "text-sage-500" },
-  perdida:        { border: "border-rosey-300",      chip: "text-rosey-500" },
+const STAGE_LABEL_EXT: Record<PipelineStage, string> = {
+  lead_nueva: STAGE_LABEL.lead_nueva,
+  calificada: STAGE_LABEL.calificada,
+  seguimiento: "Seguimiento",
+  esperando_pago: STAGE_LABEL.esperando_pago,
+  pagada: STAGE_LABEL.pagada,
 };
+
+const STAGE_TONE: Record<PipelineStage, { border: string; chip: string }> = {
+  lead_nueva:     { border: "border-skyy-300",  chip: "text-skyy-500" },
+  calificada:     { border: "border-lila-300",  chip: "text-lila-500" },
+  seguimiento:    { border: "border-rosey-300", chip: "text-rosey-500" },
+  esperando_pago: { border: "border-ambr-300",  chip: "text-ambr-500" },
+  pagada:         { border: "border-sage-300",  chip: "text-sage-500" },
+};
+
+// Para un lead determinado, decide en qué columna visible cae. Si tiene
+// seguimiento programado o enviado y todavía está en lead_nueva/calificada,
+// lo movemos a la columna virtual "seguimiento".
+function clasificar(l: LeadConSeg): PipelineStage | "perdida" {
+  if (l.estado === "perdida") return "perdida";
+  if (l.estado === "pagada") return "pagada";
+  if (l.estado === "esperando_pago") return "esperando_pago";
+  const tieneSeguimiento =
+    (l.seguimientos_pendientes ?? 0) > 0 || (l.seguimientos_enviados ?? 0) > 0;
+  if (tieneSeguimiento && (l.estado === "lead_nueva" || l.estado === "calificada")) {
+    return "seguimiento";
+  }
+  return l.estado as PipelineStage;
+}
+
+function siguienteEstadoReal(stage: PipelineStage): LeadEstado | null {
+  // Pasar de "seguimiento" → "esperando_pago" en la tabla (porque
+  // seguimiento es virtual). El resto sigue el orden normal.
+  if (stage === "seguimiento") return "esperando_pago";
+  if (stage === "lead_nueva") return "calificada";
+  if (stage === "calificada") return "esperando_pago";
+  if (stage === "esperando_pago") return "pagada";
+  return null;
+}
 
 const CANAL_BORDER: Record<string, string> = {
   Meta: "border-t-skyy-300",
@@ -50,7 +102,9 @@ const CANAL_BORDER: Record<string, string> = {
 export function PipelineBoard() {
   const [canal, setCanal] = useState<string | "all">("all");
   const [advisor, setAdvisor] = useState<string | "all">("all");
-  const { data: leads, isLoading, error } = usePipelineLeads(canal, advisor);
+  const [selected, setSelected] = useState<string | null>(null);
+  const { data: leadsRaw, isLoading, error } = usePipelineLeads(canal, advisor);
+  const leads = (leadsRaw ?? []) as LeadConSeg[];
   const { data: asesoras } = useAsesoras();
   const { data: adsMap } = useSWR<AdsMap>(
     "/api/dashboard/meta/campanas?days=180",
@@ -58,12 +112,13 @@ export function PipelineBoard() {
     { refreshInterval: 10 * 60_000, revalidateOnFocus: false },
   );
 
-  const grouped: Record<LeadEstado, Lead[]> = {
-    lead_nueva: [], calificada: [], esperando_pago: [], pagada: [], perdida: [],
+  const grouped: Record<PipelineStage | "perdida", LeadConSeg[]> = {
+    lead_nueva: [], calificada: [], seguimiento: [],
+    esperando_pago: [], pagada: [], perdida: [],
   };
-  for (const l of leads ?? []) if (l.estado && grouped[l.estado]) grouped[l.estado].push(l);
+  for (const l of leads) grouped[clasificar(l)].push(l);
 
-  const totalPipeline = (leads ?? [])
+  const totalPipeline = leads
     .filter((l) => l.estado !== "pagada" && l.estado !== "perdida")
     .reduce((s, l) => s + Number(l.monto_acumulado || 0), 0);
 
@@ -108,9 +163,16 @@ export function PipelineBoard() {
         </div>
       )}
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-5 gap-3">
         {STAGES.map((st) => (
-          <Column key={st} stage={st} leads={grouped[st]} loading={isLoading} adsMap={adsMap} />
+          <Column
+            key={st}
+            stage={st}
+            leads={grouped[st]}
+            loading={isLoading}
+            adsMap={adsMap}
+            onSelect={setSelected}
+          />
         ))}
       </div>
 
@@ -121,6 +183,10 @@ export function PipelineBoard() {
           </summary>
         </details>
       )}
+
+      {selected && (
+        <LeadDetailDrawer numero={selected} onClose={() => setSelected(null)} />
+      )}
     </div>
   );
 }
@@ -130,41 +196,59 @@ function Column({
   leads,
   loading,
   adsMap,
+  onSelect,
 }: {
-  stage: LeadEstado;
-  leads: Lead[];
+  stage: PipelineStage;
+  leads: LeadConSeg[];
   loading?: boolean;
   adsMap?: AdsMap;
+  onSelect: (numero: string) => void;
 }) {
   const [over, setOver] = useState(false);
   const tone = STAGE_TONE[stage];
+  // La columna "seguimiento" es virtual — soltar ahí no tiene un estado
+  // real al cual mover el lead, así que la dejamos no-drop.
+  const droppable = stage !== "seguimiento";
   return (
     <div
       className={cn(
         "rounded-md border bg-cream-50 px-2 py-3 min-h-[440px] transition-colors",
-        over ? "border-rosey-300 bg-rosey-50/30" : "border-foreground/15",
+        over && droppable ? "border-rosey-300 bg-rosey-50/30" : "border-foreground/15",
       )}
-      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+      onDragOver={(e) => {
+        if (!droppable) return;
+        e.preventDefault();
+        setOver(true);
+      }}
       onDragLeave={() => setOver(false)}
       onDrop={async (e) => {
+        if (!droppable) return;
         setOver(false);
         const id = e.dataTransfer.getData("text/plain");
         if (id) {
-          try { await actualizarEstadoLead(id, stage); }
+          try { await actualizarEstadoLead(id, stage as LeadEstado); }
           catch (err) { alert("No se pudo: " + (err as Error).message); }
         }
       }}
     >
       <div className="flex items-center justify-between px-2 mb-3">
-        <span className="label-xs">{STAGE_LABEL[stage]}</span>
+        <span className="label-xs">{STAGE_LABEL_EXT[stage]}</span>
         <span className={cn("text-[11px]", tone.chip)}>{leads.length}</span>
       </div>
       <div className="space-y-2.5">
         {loading && <div className="h-24 rounded bg-cream-200 animate-pulse" />}
-        {!loading && leads.map((l) => <LeadCard key={l.numero_whatsapp} lead={l} adsMap={adsMap} />)}
+        {!loading && leads.map((l) => (
+          <LeadCard
+            key={l.numero_whatsapp}
+            lead={l}
+            adsMap={adsMap}
+            stage={stage}
+            onSelect={onSelect}
+          />
+        ))}
         {!loading && leads.length === 0 && (
           <div className="text-[12px] text-foreground/50 italic text-center py-6">
-            arrastra aquí
+            {droppable ? "arrastra aquí" : "sin seguimientos"}
           </div>
         )}
       </div>
@@ -172,40 +256,59 @@ function Column({
   );
 }
 
-function LeadCard({ lead, adsMap }: { lead: Lead; adsMap?: AdsMap }) {
-  const idx = STAGES.indexOf(lead.estado);
-  const next = idx >= 0 && idx < STAGES.length - 1 ? STAGES[idx + 1] : null;
+function LeadCard({
+  lead,
+  adsMap,
+  stage,
+  onSelect,
+}: {
+  lead: LeadConSeg;
+  adsMap?: AdsMap;
+  stage: PipelineStage;
+  onSelect: (numero: string) => void;
+}) {
+  const next = siguienteEstadoReal(stage);
   const border = CANAL_BORDER[lead.canal_origen ?? ""] ?? "border-t-foreground/30";
   const tail = lead.numero_whatsapp.slice(-4);
   const displayName = lead.nombre?.trim() || `Sin nombre · ${tail}`;
   const etiquetas = lead.etiquetas ?? [];
-  const isTest = etiquetas.includes("playground");
+  const isPlayground = etiquetas.includes("playground");
+  const isAdmin = etiquetas.includes("admin:libia");
   const piezaPersonalizada = etiquetas.includes("pieza_personalizada");
   const handoffMotivo = etiquetas
     .find((e) => e.startsWith("handoff:"))
     ?.slice("handoff:".length);
   const adInfo = lead.anuncio_id ? adsMap?.get(lead.anuncio_id) : undefined;
-  // Si no tenemos el ad cacheado pero hay anuncio_id, mostramos el ID truncado.
   const adLabel = adInfo
     ? adInfo.name
     : lead.anuncio_id
       ? `Anuncio ${lead.anuncio_id.slice(-6)}`
       : null;
+  const segPend = lead.seguimientos_pendientes ?? 0;
+  const segEnv = lead.seguimientos_enviados ?? 0;
   return (
-    <a
-      href={`https://wa.me/${lead.numero_whatsapp.replace(/\D/g, "")}`}
-      target="_blank"
-      rel="noreferrer"
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect(lead.numero_whatsapp)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") onSelect(lead.numero_whatsapp);
+      }}
       draggable
       onDragStart={(e) => e.dataTransfer.setData("text/plain", lead.numero_whatsapp)}
       className={cn(
-        "block bg-cream-50 border border-foreground/15 border-t-2 rounded-md px-3 py-2.5 cursor-grab active:cursor-grabbing select-none hover:bg-rosey-50/30",
+        "block bg-cream-50 border border-foreground/15 border-t-2 rounded-md px-3 py-2.5 cursor-pointer select-none hover:bg-rosey-50/30",
         border,
       )}
     >
       <div className="flex items-center justify-between mb-1 gap-1.5">
         <span className="label-xs">{lead.canal_origen ?? "—"}</span>
-        {isTest && (
+        {isAdmin && (
+          <span className="text-[9px] tracking-wider uppercase px-1 py-0.5 rounded border border-lila-300 text-lila-500 bg-lila-50">
+            CEO
+          </span>
+        )}
+        {isPlayground && !isAdmin && (
           <span className="text-[9px] tracking-wider uppercase px-1 py-0.5 rounded border border-lila-300 text-lila-500 bg-lila-50">
             test
           </span>
@@ -248,6 +351,14 @@ function LeadCard({ lead, adsMap }: { lead: Lead; adsMap?: AdsMap }) {
             💎 Personalizada · revisar imagen
           </span>
         )}
+        {(segPend > 0 || segEnv > 0) && (
+          <span
+            className="text-[10px] font-medium px-1.5 py-0.5 rounded border border-rosey-300 bg-rosey-50 text-rosey-500"
+            title={`Pendientes: ${segPend} · Enviados: ${segEnv}`}
+          >
+            ⏰ {segPend > 0 ? `${segPend} pend` : `${segEnv} env`}
+          </span>
+        )}
         {handoffMotivo && <HandoffMotivoChip motivo={handoffMotivo} />}
       </div>
       {next && (
@@ -264,7 +375,7 @@ function LeadCard({ lead, adsMap }: { lead: Lead; adsMap?: AdsMap }) {
           → {STAGE_LABEL[next]}
         </button>
       )}
-    </a>
+    </div>
   );
 }
 
