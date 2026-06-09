@@ -158,6 +158,34 @@ export async function runFlowMadre(input: {
     metadata,
   });
 
+  // ── Persistir última intención / objeción / señal de compra ──
+  // Lo que devolvió el Verificador queda guardado en
+  // estado_conversacion_actual para que el drawer del lead y los
+  // seguimientos contextuales puedan leerlo sin tener que recomputarlo.
+  try {
+    await supabase
+      .from("estado_conversacion_actual")
+      .update({
+        ultima_intencion: verificador.intencion_primaria,
+        ultima_objecion:
+          (verificador.contexto_clave?.objecion_detectada as string | null) ?? null,
+        ultima_senal_compra:
+          (verificador.contexto_clave?.senal_compra as string | null) ?? null,
+        ultima_actualizacion_intencion: new Date().toISOString(),
+      })
+      .eq("numero_whatsapp", numero);
+  } catch (e) {
+    console.warn("[flow] no se pudo persistir intención:", (e as Error).message);
+  }
+
+  // ── Detector ligero de revendedora (regex sobre el texto) ────
+  try {
+    const { persistirRevendedoraSiAplica } = await import("./senales-lead");
+    await persistirRevendedoraSiAplica(supabase, numero, input.cleaned.userText);
+  } catch (e) {
+    console.warn("[flow] detector revendedora falló:", (e as Error).message);
+  }
+
   // ── Paso 14: log eventos_negocio ────────────────────────
   if (
     verificador.eventos_detectados &&
@@ -204,6 +232,57 @@ export async function runFlowMadre(input: {
     mode,
     yaEnHandoff,
   });
+
+  // ── Persistir ultimo_envio en leads ─────────────────────
+  if (toolResult?.ok) {
+    try {
+      const { ultimoEnvioParaTool } = await import("./senales-lead");
+      const etiqueta = ultimoEnvioParaTool(toolResult.tool);
+      if (etiqueta) {
+        await supabase
+          .from("leads")
+          .update({
+            ultimo_envio: etiqueta,
+            ultimo_envio_en: new Date().toISOString(),
+          })
+          .eq("numero_whatsapp", numero);
+      }
+    } catch (e) {
+      console.warn("[flow] no se pudo persistir ultimo_envio:", (e as Error).message);
+    }
+  }
+
+  // ── Tiempo de primera respuesta (métrica 07) ────────────
+  // Si es la primera vez que Sirena le contesta a este lead,
+  // calculamos los ms entre su primer mensaje y nuestra respuesta.
+  if (toolResult?.ok || agente.texto) {
+    try {
+      const { data: primeraEntrante } = await supabase
+        .from("conversaciones")
+        .select("timestamp")
+        .eq("numero_whatsapp", numero)
+        .eq("direccion", "entrante")
+        .order("timestamp", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      const { data: leadRow } = await supabase
+        .from("leads")
+        .select("tiempo_primera_respuesta_ms")
+        .eq("numero_whatsapp", numero)
+        .maybeSingle();
+      if (primeraEntrante?.timestamp && leadRow?.tiempo_primera_respuesta_ms == null) {
+        const ms = Date.now() - new Date(primeraEntrante.timestamp as string).getTime();
+        if (ms >= 0 && ms < 7 * 86_400_000) {
+          await supabase
+            .from("leads")
+            .update({ tiempo_primera_respuesta_ms: ms })
+            .eq("numero_whatsapp", numero);
+        }
+      }
+    } catch (e) {
+      console.warn("[flow] no se pudo medir tiempo primera respuesta:", (e as Error).message);
+    }
+  }
 
   // ── Paso 16: parse loop sobre el texto del Agente ───────
   const fragmentos = parseLoop(agente.texto);

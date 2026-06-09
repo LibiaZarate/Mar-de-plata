@@ -227,11 +227,30 @@ export async function invitarGrupo(args: {
   texto_acompanante: string;
 } & CommonArgs): Promise<ToolResult> {
   const supabase = createAdminClient();
-  const link = await readConfig("link_grupo_abierto", LINK_GRUPO);
 
-  const messages = [
-    { type: "text" as const, text: `${args.texto_acompanante}\n\n${link}` },
-  ];
+  // Mandar los TRES grupos con orden sugerido. Si el primero está
+  // lleno, la clienta prueba el siguiente — eso funciona como
+  // rotación pasiva sin tener que llevar contadores. (Decisión Libia,
+  // junio 2026.)
+  const link1 = await readConfig("link_grupo_mayoreo_1", LINK_GRUPO);
+  const link2 = await readConfig("link_grupo_mayoreo_2", LINK_GRUPO);
+  const link3 = await readConfig("link_grupo_mayoreo_3", LINK_GRUPO);
+
+  const aperturaUsuario = args.texto_acompanante?.trim();
+  const apertura =
+    aperturaUsuario && aperturaUsuario.length > 0
+      ? aperturaUsuario
+      : "Te dejo los grupos abiertos, linda 💗";
+
+  const textoMensaje = `${apertura}
+
+Métete al *Grupo 1* primero. Si te sale que está lleno, prueba el 2, y si tampoco, el 3 ✨
+
+Grupo 1 👉🏻 ${link1}
+Grupo 2 👉🏻 ${link2}
+Grupo 3 👉🏻 ${link3}`;
+
+  const messages = [{ type: "text" as const, text: textoMensaje }];
   await sendToClient({
     subscriberId: args.subscriber_id,
     kaizenSessionId: args.kaizen_session_id ?? null,
