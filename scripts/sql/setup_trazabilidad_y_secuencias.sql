@@ -126,6 +126,30 @@ CREATE TABLE IF NOT EXISTS secuencia_pasos_ejecutados (
 CREATE INDEX IF NOT EXISTS idx_pasos_secuencia
   ON secuencia_pasos_ejecutados (secuencia_id, paso);
 
+-- ─── 9. Tipos nuevos de seguimientos (cadencia + restock) ──
+
+ALTER TABLE seguimientos_programados
+  DROP CONSTRAINT IF EXISTS seguimientos_programados_tipo_check;
+
+ALTER TABLE seguimientos_programados
+  ADD CONSTRAINT seguimientos_programados_tipo_check
+  CHECK (tipo IN (
+    'lead_frio_24h',
+    'lead_frio_3d',
+    'lead_frio_6d',
+    'lead_frio_10d',
+    'post_compra_7d',
+    'post_compra_30d',
+    'deposito_pendiente_24h',
+    'deposito_pendiente_48h',
+    'reactivacion_30d',
+    'reactivacion_60d',
+    'restock_revendedora',
+    'disponibilidad_aviso',
+    'prueba_simulador',
+    'texto_libre_manual'
+  ));
+
 -- ─── Verificación ──────────────────────────────────────────
 
 SELECT

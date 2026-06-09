@@ -9,6 +9,10 @@
     {
       "path": "/api/cron/asignar-pendientes",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/secuencias",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

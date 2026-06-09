@@ -172,6 +172,7 @@ async function procesarUno(
       nombre: (lead?.nombre as string) ?? null,
       ciudad: null, canal_origen: null, tipo: null, estado: null,
       compras_totales: 0, monto_acumulado: 0, es_recurrente: false,
+      es_revendedora: false,
       fecha_ultima_compra: null,
       rama_activa: null, catalogo_visto: null, faqs_respondidas: [],
       intencion_compra_detectada: false, objecion_detectada: null,

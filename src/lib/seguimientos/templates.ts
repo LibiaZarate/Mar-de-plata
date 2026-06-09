@@ -29,9 +29,17 @@ import { ultimaFaqHumana } from "./snapshot";
 
 export type TipoSeguimiento =
   | "lead_frio_24h"
+  | "lead_frio_3d"
+  | "lead_frio_6d"
+  | "lead_frio_10d"
   | "post_compra_7d"
+  | "post_compra_30d"
   | "deposito_pendiente_24h"
+  | "deposito_pendiente_48h"
   | "reactivacion_30d"
+  | "reactivacion_60d"
+  | "restock_revendedora"
+  | "disponibilidad_aviso"
   | "prueba_simulador";
 
 export const SEGUIMIENTOS_DEFAULT: Record<
@@ -40,31 +48,79 @@ export const SEGUIMIENTOS_DEFAULT: Record<
 > = {
   lead_frio_24h: {
     texto:
-      "¡Hola {nombre}! 💗 {si:vio_catalogo}¿Pudiste ver el catálogo de {catalogo_visto}? Quedó pendiente lo de {ultima_faq} ✨{/si}{si:nuevo}Te paso de vuelta por aquí 💗 ¿Sigues interesada o tienes alguna duda?{/si}{si:recurrente}¿Sigues por aquí, linda? Sé que ya conoces nuestras piezas — ¿te dejo el catálogo nuevo?{/si}",
-    descripcion: "Lead recibió catálogo y no respondió en 24h",
+      "{nombre}, ¿pudiste ver el catálogo? {si:vio_catalogo}Quedó pendiente lo de {ultima_faq} — aquí ando por si tienes duda ✨{/si}{si:mayoreo} El mínimo de mayoreo es $1,500 y lo podemos armar surtido 💗{/si}",
+    descripcion: "Paso 1 · +24h · pregunta + detalle",
     offset_dias: 1,
+  },
+  lead_frio_3d: {
+    texto:
+      "{nombre} 🌙 Te paso por aquí porque acaban de entrar piezas nuevas {si:vio_catalogo}de lo que ya viste{/si}. Sin compromiso, solo por si te lates a una. 💗",
+    descripcion: "Paso 2 · +3d · valor puro, sin pedir nada",
+    offset_dias: 3,
+  },
+  lead_frio_6d: {
+    texto:
+      "{nombre}, te quiero preguntar directo: ¿sigue interesándote? {si:objecion}Si fue por lo de {ultima_objecion} dime y vemos qué se puede hacer ✨{/si}{si:nuevo} Y si no era el momento, lo entiendo, no me ofendo 💗{/si}",
+    descripcion: "Paso 3 · +6d · pregunta directa, cambio de ángulo",
+    offset_dias: 6,
+  },
+  lead_frio_10d: {
+    texto:
+      "{nombre} 💗 Cierro tu apartado por aquí para no estar molestando. Cuando se te antoje algo, aquí ando — solo escríbeme y retomamos 🌙",
+    descripcion: "Paso 4 · +10d · break-up amable",
+    offset_dias: 10,
   },
   post_compra_7d: {
     texto:
-      "¡Hola {nombre}! 💕 Pasaron unos días desde tu pedido — ¿cómo te fueron tus piezas? Nos encantaría ver una foto si gustas etiquetarnos 💗{si:recurrente} Mil gracias por confiar otra vez 💎{/si}",
-    descripcion: "Cliente compró, 7 días después",
+      "{nombre} 💕 ¿Cómo te llegó tu pedido? Si te gustó y la quieres presumir, etiquétanos. {si:recurrente}Mil gracias por confiar otra vez 💎{/si}",
+    descripcion: "Paso 1 · +7d · feedback + invitación a etiquetar",
     offset_dias: 7,
+  },
+  post_compra_30d: {
+    texto:
+      "{nombre}, ya pasó un mes 🌙 Acaban de entrar piezas nuevas de {ciudad} y pensé en ti. ¿Te muestro lo nuevo, sin compromiso?",
+    descripcion: "Paso 2 · +30d · vuelve la conversación",
+    offset_dias: 30,
   },
   deposito_pendiente_24h: {
     texto:
-      "¡Hola {nombre}! 💗 ¿Pudiste hacer el depósito de las piezas que apartamos? Aviso para no soltarlas a alguien más ✨{si:objecion} Si tienes alguna duda dime y la resolvemos 💗{/si}",
-    descripcion: "Pidió apartar pero no mandó depósito en 24h",
+      "{nombre}, te tengo tu apartado ✨ Lo suelto mañana si no alcanzas a mandar el depósito de $300. No quiero que se te vaya — ¿te ayudo a apartarla bien?",
+    descripcion: "Paso 1 · +24h · urgencia suave",
     offset_dias: 1,
+  },
+  deposito_pendiente_48h: {
+    texto:
+      "{nombre} 💗 Último aviso por aquí: si no me llega el depósito hoy, suelto tu pieza para alguien más. ¿La quieres apartar todavía?",
+    descripcion: "Paso 2 · +48h · último aviso antes de soltar",
+    offset_dias: 2,
   },
   reactivacion_30d: {
     texto:
-      "¡Hola {nombre}! 💎 {si:recurrente}Hace tiempo no nos vemos 💗 Tenemos piezas nuevas que te encantarían — ¿quieres que te pase el catálogo de novedades?{/si}{si:nuevo}Te recordamos que aún tenemos piezas hermosas esperándote 💗 ¿Te paso el catálogo de novedades?{/si}",
-    descripcion: "Cliente sin contacto en 30 días",
+      "{nombre}, hace tiempo no platicamos 🌙 Entraron piezas nuevas{si:vio_catalogo} de la línea que te gustó{/si} y varias clientas{si:ciudad} de {ciudad}{/si} ya pidieron. ¿Te muestro lo nuevo? Sin compromiso.",
+    descripcion: "Reactivación · novedades con prueba social local",
     offset_dias: 30,
+  },
+  reactivacion_60d: {
+    texto:
+      "{nombre} 💎 Estamos en temporada — y de las piezas que viste{si:vio_catalogo}, varias salieron rapidísimo{/si}. ¿Te interesa que te ponga al día?",
+    descripcion: "Paso 2 · +60d · ángulo temporada",
+    offset_dias: 60,
+  },
+  restock_revendedora: {
+    texto:
+      "{nombre} 🌙 Por estas fechas normalmente resurtes. Acaba de entrar producto y pensé en ti porque es de lo que más te sale. ¿Te armo una lista surtida para que la veas?",
+    descripcion: "Restock revendedora · su cadencia",
+    offset_dias: 21,
+  },
+  disponibilidad_aviso: {
+    texto:
+      "{nombre}, ¿te acuerdas que te gustó {contexto_libre}? Hoy entró de nuevo a disponibilidad 🌙 Te avisé a ti primero porque sé que la andabas buscando. ¿Te la aparto antes de que se vuelva a ir?",
+    descripcion: "Aviso · pieza agotada que regresa",
+    offset_dias: 0,
   },
   prueba_simulador: {
     texto: "🧪 Seguimiento de prueba para {nombre} — si ves esto, la cola funciona ✅",
-    descripcion: "Disparo manual desde el playground para validar el cron",
+    descripcion: "Disparo manual desde el playground",
     offset_dias: 0,
   },
 };
@@ -128,6 +184,10 @@ export function renderConSnapshot(
     deposito: snap.deposito_dado,
     objecion: !!snap.objecion_detectada,
     handoff: snap.requiere_handoff,
+    mayoreo: snap.tipo === "mayoreo",
+    menudeo: snap.tipo === "menudeo",
+    ciudad: !!snap.ciudad,
+    revendedora: snap.es_revendedora,
   };
 
   let out = limpiarBloquesCondicionales(texto, banderas);
@@ -144,12 +204,16 @@ export function renderConSnapshot(
     ciudad: snap.ciudad,
     catalogo_visto: snap.catalogo_visto,
     ultima_faq: ultimaFaq,
+    ultima_objecion: snap.objecion_detectada,
     rama: snap.rama_activa,
     etapa: snap.estado ? ETAPA_LABEL[snap.estado] ?? snap.estado : null,
     compras_totales: snap.compras_totales,
     canal: snap.canal_origen ? CANAL_LABEL[snap.canal_origen] ?? snap.canal_origen : null,
     dias_desde_compra: diasCompra,
     horas_inactiva: snap.horas_desde_ultima_interaccion,
+    dias: snap.horas_desde_ultima_interaccion
+      ? Math.max(1, Math.round(snap.horas_desde_ultima_interaccion / 24))
+      : null,
     contexto_libre: snap.contexto_libre,
   };
 

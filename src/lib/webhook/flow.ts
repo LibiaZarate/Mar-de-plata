@@ -181,9 +181,32 @@ export async function runFlowMadre(input: {
   // ── Detector ligero de revendedora (regex sobre el texto) ────
   try {
     const { persistirRevendedoraSiAplica } = await import("./senales-lead");
-    await persistirRevendedoraSiAplica(supabase, numero, input.cleaned.userText);
+    const detectada = await persistirRevendedoraSiAplica(supabase, numero, input.cleaned.userText);
+
+    // Si acabamos de detectar revendedora por primera vez, arrancamos
+    // su secuencia de restock para su ritmo de recompra.
+    if (detectada) {
+      try {
+        const { iniciarSecuencia } = await import("@/lib/seguimientos/secuencias");
+        await iniciarSecuencia(supabase, numero, "restock_revendedora", {
+          motivo: "detectada_por_texto",
+        });
+      } catch (e) {
+        console.warn("[flow] no se pudo iniciar secuencia revendedora:", (e as Error).message);
+      }
+    }
   } catch (e) {
     console.warn("[flow] detector revendedora falló:", (e as Error).message);
+  }
+
+  // ── Cancelar secuencias activas: el lead respondió ──────────
+  // Cualquier mensaje entrante implica que el lead volvió a la
+  // conversación. Las secuencias frías ya no tienen sentido.
+  try {
+    const { cancelarSecuenciasActivas } = await import("@/lib/seguimientos/secuencias");
+    await cancelarSecuenciasActivas(supabase, numero, "respondio");
+  } catch (e) {
+    console.warn("[flow] cancelar secuencias por respuesta falló:", (e as Error).message);
   }
 
   // ── Paso 14: log eventos_negocio ────────────────────────
@@ -233,7 +256,7 @@ export async function runFlowMadre(input: {
     yaEnHandoff,
   });
 
-  // ── Persistir ultimo_envio en leads ─────────────────────
+  // ── Persistir ultimo_envio en leads + arrancar secuencias ──
   if (toolResult?.ok) {
     try {
       const { ultimoEnvioParaTool } = await import("./senales-lead");
@@ -249,6 +272,23 @@ export async function runFlowMadre(input: {
       }
     } catch (e) {
       console.warn("[flow] no se pudo persistir ultimo_envio:", (e as Error).message);
+    }
+
+    // Arrancar secuencia frío al enviar catálogo, grupos o menudeo.
+    // La de depósito_pendiente se arranca desde el evento de aparte.
+    if (
+      toolResult.tool === "enviar_catalogo" ||
+      toolResult.tool === "invitar_grupo" ||
+      toolResult.tool === "enviar_sitio_menudeo"
+    ) {
+      try {
+        const { iniciarSecuencia } = await import("@/lib/seguimientos/secuencias");
+        await iniciarSecuencia(supabase, numero, "lead_frio", {
+          origen: toolResult.tool,
+        });
+      } catch (e) {
+        console.warn("[flow] no se pudo iniciar secuencia lead_frio:", (e as Error).message);
+      }
     }
   }
 

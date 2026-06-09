@@ -15,6 +15,7 @@ export type SnapshotSeguimiento = {
   compras_totales: number;
   monto_acumulado: number;
   es_recurrente: boolean;
+  es_revendedora: boolean;
   fecha_ultima_compra: string | null;
   // del estado conversacional
   rama_activa: string | null;
@@ -65,7 +66,7 @@ export async function construirSnapshot(
   const { data: lead } = await sb
     .from("leads")
     .select(
-      "nombre,ciudad,canal_origen,tipo,estado,compras_totales,monto_acumulado,fecha_ultima_compra,ultima_interaccion",
+      "nombre,ciudad,canal_origen,tipo,estado,compras_totales,monto_acumulado,fecha_ultima_compra,ultima_interaccion,es_revendedora",
     )
     .eq("numero_whatsapp", numero_whatsapp)
     .maybeSingle();
@@ -112,6 +113,7 @@ export async function construirSnapshot(
     compras_totales: compras,
     monto_acumulado: Number(lead?.monto_acumulado ?? 0),
     es_recurrente: compras > 0,
+    es_revendedora: !!lead?.es_revendedora,
     fecha_ultima_compra: (lead?.fecha_ultima_compra as string) ?? null,
 
     rama_activa: (estado?.rama_activa as string) ?? null,
