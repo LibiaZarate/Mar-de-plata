@@ -10,6 +10,7 @@ import {
   pushWebhookLog,
   type WebhookLogEntry,
 } from "@/lib/webhook/recent";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -85,6 +86,41 @@ export async function POST(req: NextRequest) {
   };
 
   pushWebhookLog(entry);
+
+  // Persistir en Supabase para que sobreviva al recycle del lambda.
+  // Es best-effort: si falla, lo logueamos pero no rompemos la respuesta
+  // al webhook (ManyChat no debe ver error por un problema de log).
+  try {
+    const sb = createAdminClient();
+    await sb.from("webhook_log").insert({
+      received_at: entry.receivedAt,
+      source,
+      duration_ms: entry.durationMs,
+      numero_whatsapp: cleaned.whatsappPhone,
+      subscriber_id: cleaned.subscriberId,
+      tipo_mensaje: cleaned.tipoMensajeOriginal,
+      texto_corto: cleaned.userText.slice(0, 200),
+      guardrail_hit: !!flow?.earlyExit,
+      tool_ejecutada: flow?.verificador?.accion_recomendada?.tool_principal ?? null,
+      flow_ok: !flowError,
+      flow_error: flowError,
+      raw_body: rawBody,
+      headers,
+      cleaned,
+      flow_resumen: flow
+        ? {
+            mode: flow.mode,
+            verificador: flow.verificador,
+            tool: flow.toolResult?.tool,
+            tool_ok: flow.toolResult?.ok,
+            outbound_count: flow.outbound.length,
+            delivery_notes: flow.deliveryNotes,
+          }
+        : null,
+    });
+  } catch (e) {
+    console.error("[webhook/manychat] persistencia webhook_log falló:", (e as Error).message);
+  }
 
   console.info(
     `[webhook/manychat] ${source} · ${cleaned.sessionId} · ${cleaned.tipoMensajeOriginal}` +
