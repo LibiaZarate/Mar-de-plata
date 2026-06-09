@@ -260,20 +260,23 @@ async function determinarSkip(
     return "lead en handoff activo";
   }
 
-  // post_compra_7d sin compra registrada
+  // post_compra sin compra registrada (cualquier paso de la familia)
   if (
-    row.tipo === "post_compra_7d" &&
+    row.tipo.startsWith("post_compra") &&
     Number(lead?.compras_totales ?? 0) === 0
   ) {
     return "tipo=post_compra pero compras_totales=0";
   }
 
   // Si la clienta respondió DESPUÉS de cuando se programó este,
-  // ya no está fría → saltar (excepto post_compra y prueba)
+  // ya no está fría → saltar. Cubre TODA la familia de cadencia
+  // (lead_frio_*, reactivacion_*, deposito_pendiente_*, restock_*),
+  // no solo los tipos originales. post_compra y prueba quedan fuera.
   const skipPorActividad =
-    row.tipo === "lead_frio_24h" ||
-    row.tipo === "reactivacion_30d" ||
-    row.tipo === "deposito_pendiente_24h";
+    row.tipo.startsWith("lead_frio") ||
+    row.tipo.startsWith("reactivacion") ||
+    row.tipo.startsWith("deposito_pendiente") ||
+    row.tipo.startsWith("restock");
   if (skipPorActividad && lead?.ultima_interaccion) {
     const interaccion = new Date(lead.ultima_interaccion as string).getTime();
     const programado = new Date(row.ejecutar_en).getTime();

@@ -77,18 +77,28 @@ export async function GET(req: NextRequest) {
     ).length;
 
     // ── 2. Hero: leads dormidos recuperados ────────────────
-    // Lead que tenía secuencia que se ejecutó al menos 1 paso, y
-    // posteriormente respondió o llegó a cierre.
-    const numerosConSecuencia = new Set(
-      secuencias.filter((s) => s.paso_actual > 0).map((s) => s.numero_whatsapp),
-    );
-    const cierresPorNumero = new Set(cierres.map((c) => c.numero_whatsapp));
+    // Dormido = secuencia que ejecutó al menos 1 paso (paso_actual>0).
+    // Recuperado = DESPUÉS de eso respondió (la cancelación con motivo
+    // 'respondio' solo ocurre con un mensaje entrante posterior) o
+    // llegó a cierre con fecha posterior al inicio de la secuencia.
+    // Comparar contra "cualquier entrante del periodo" estaría inflado:
+    // todo lead tiene al menos el mensaje con el que llegó.
+    const secuenciasConPaso = secuencias.filter((s) => s.paso_actual > 0);
+    const numerosConSecuencia = new Set(secuenciasConPaso.map((s) => s.numero_whatsapp));
     const recuperados = Array.from(numerosConSecuencia).filter((n) => {
-      const tieneRespuesta = conversaciones.some(
-        (c) => c.numero_whatsapp === n && c.direccion === "entrante",
+      const susSecuencias = secuenciasConPaso.filter((s) => s.numero_whatsapp === n);
+      const respondioTrasPaso = susSecuencias.some(
+        (s) => s.cancelada_por === "respondio",
       );
-      const tieneCierre = cierresPorNumero.has(n);
-      return tieneRespuesta || tieneCierre;
+      const comproTrasSecuencia = susSecuencias.some((s) =>
+        cierres.some(
+          (c) =>
+            c.numero_whatsapp === n &&
+            new Date((c as { fecha_cierre: string }).fecha_cierre).getTime() >
+              new Date(s.iniciada_en).getTime(),
+        ),
+      );
+      return respondioTrasPaso || comproTrasSecuencia;
     }).length;
     const dormidos_total = numerosConSecuencia.size;
 
@@ -110,10 +120,17 @@ export async function GET(req: NextRequest) {
     ).size;
 
     // 02 · Efectividad del bot
+    // Cuenta como "necesitó humano" tanto el handoff normal como el
+    // disparado por guardrail crítico — si solo contáramos
+    // handoff_asesora, los guardrails inflarían la efectividad.
     const numerosLead = new Set(leads.map((l) => l.numero_whatsapp));
     const numerosConHandoff = new Set(
       conversaciones
-        .filter((c) => c.tool_ejecutada === "handoff_asesora")
+        .filter(
+          (c) =>
+            c.tool_ejecutada === "handoff_asesora" ||
+            c.tool_ejecutada === "handoff_directo_guardrail",
+        )
         .map((c) => c.numero_whatsapp),
     );
     const totalLeads = numerosLead.size;

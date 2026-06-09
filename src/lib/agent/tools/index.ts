@@ -343,6 +343,20 @@ export async function handoffAsesora(args: {
     `handoff:${args.motivo}`,
   );
 
+  // La asesora toma el control: cancelar la cadencia automática para
+  // que no le caigan seguimientos de bot encima de la conversación
+  // humana. (El executor además tiene skip rule por requiere_handoff,
+  // pero cancelar evita que la secuencia siga avanzando en vacío y
+  // dispare pasos obsoletos cuando el handoff se resuelva.)
+  try {
+    const { cancelarSecuenciasActivas } = await import(
+      "@/lib/seguimientos/secuencias"
+    );
+    await cancelarSecuenciasActivas(supabase, args.numero_whatsapp, "handoff");
+  } catch {
+    // best-effort
+  }
+
   await supabase
     .from("estado_conversacion_actual")
     .update({
@@ -455,6 +469,43 @@ export async function programarSeguimiento(args: {
   contexto_adicional?: string;
 }): Promise<ToolResult> {
   const supabase = createAdminClient();
+
+  // Anti-duplicado: si ya hay una secuencia activa de la misma familia
+  // (lead_frio, deposito_pendiente, reactivacion, post_pedido), no
+  // programar un one-shot encima — la clienta recibiría dos mensajes
+  // por el mismo motivo. La secuencia tiene prioridad.
+  const familia = args.tipo.startsWith("lead_frio")
+    ? "lead_frio"
+    : args.tipo.startsWith("deposito_pendiente")
+      ? "deposito_pendiente"
+      : args.tipo.startsWith("reactivacion")
+        ? "reactivacion"
+        : args.tipo.startsWith("post_compra")
+          ? "post_pedido"
+          : null;
+  if (familia) {
+    const { data: secActiva } = await supabase
+      .from("secuencias_seguimiento")
+      .select("id")
+      .eq("numero_whatsapp", args.numero_whatsapp)
+      .eq("tipo_secuencia", familia)
+      .eq("pausada", false)
+      .is("cancelada_por", null)
+      .is("finalizada_en", null)
+      .limit(1)
+      .maybeSingle();
+    if (secActiva) {
+      return {
+        tool: "programar_seguimiento",
+        ok: true,
+        outboundMessages: [],
+        notes: [
+          `Ya hay secuencia ${familia} activa (id=${secActiva.id}) — no se duplica el seguimiento`,
+        ],
+      };
+    }
+  }
+
   const ejecutarEn = new Date(Date.now() + args.dias_offset * 86400_000).toISOString();
 
   // Snapshot del contexto al momento de programar.

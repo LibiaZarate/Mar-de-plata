@@ -81,6 +81,24 @@ export async function GET(req: NextRequest) {
       seguimientosPorLead = map;
     }
 
+    // Secuencias activas: un lead con cadencia programada que aún no
+    // dispara su primer paso (ej. las primeras 24h del lead_frio) debe
+    // contar como "en seguimiento" en el kanban, aunque todavía no
+    // exista fila en seguimientos_programados.
+    const secuenciasActivasPorLead = new Set<string>();
+    if (numeros.length > 0) {
+      const { data: secs } = await sb
+        .from("secuencias_seguimiento")
+        .select("numero_whatsapp")
+        .in("numero_whatsapp", numeros)
+        .eq("pausada", false)
+        .is("cancelada_por", null)
+        .is("finalizada_en", null);
+      for (const s of secs ?? []) {
+        secuenciasActivasPorLead.add(s.numero_whatsapp as string);
+      }
+    }
+
     const leadsEnriquecidos = leads.map((l) => {
       const numero = (l as { numero_whatsapp?: string }).numero_whatsapp ?? "";
       const s = seguimientosPorLead.get(numero) ?? {
@@ -88,11 +106,13 @@ export async function GET(req: NextRequest) {
         ultimo_enviado_en: null,
         total_enviados: 0,
       };
+      const enSecuencia = secuenciasActivasPorLead.has(numero);
       return {
         ...l,
-        seguimientos_pendientes: s.pendientes,
+        seguimientos_pendientes: s.pendientes + (enSecuencia && s.pendientes === 0 ? 1 : 0),
         seguimientos_enviados: s.total_enviados,
         ultimo_seguimiento_en: s.ultimo_enviado_en,
+        en_secuencia_activa: enSecuencia,
       };
     });
 
