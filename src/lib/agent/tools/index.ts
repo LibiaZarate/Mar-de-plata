@@ -35,15 +35,8 @@ type CommonArgs = {
   mode: FlowMode;
 };
 
-const CATALOGOS = {
-  pandora: "https://www.canva.com/design/DAGgun-_kzE/isvBbeVkT0S448hgiqV3YA/view?utm_content=DAGgun-_kzE&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=hec37154b5d",
-  pandora_sin_precios:
-    "https://www.canva.com/design/DAGg-zNAB9k/sTaAKA3YJGy-9K7y2nL6jA/view?utm_content=DAGg-zNAB9k&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=ha0181b1eaf",
-  taxco: "https://mardeplatataxco.my.canva.site/",
-  tows: "https://mardeplatataxco.my.canva.site/tows",
-} as const;
-
-const LINK_GRUPO = "https://chat.whatsapp.com/DtpuIyQljqhLu0B7pwnZkB?mode=ac_t";
+const CATALOGO_MAYOREO_DEFAULT = "https://mardeplatataxco.my.canva.site/";
+const LINK_GRUPO = "https://chat.whatsapp.com/KGHBRGal5Lg5hvtkmnttei?mode=gi_t";
 
 async function readConfig(clave: string, fallback: string): Promise<string> {
   const supabase = createAdminClient();
@@ -158,51 +151,23 @@ export async function enviarImagenFaq(args: {
 // ──────────────────────────────────────────────────────────
 // Tool 2 · enviar_catalogo
 // ──────────────────────────────────────────────────────────
+// Decisión del negocio (junio 2026): el catálogo es UNO solo, vive
+// en mardeplatataxco.my.canva.site. Las colecciones Pandora/TOWS
+// se descontinuaron como links separados, todo está dentro del
+// mismo Canva site. La tool acepta `coleccion` por retrocompat,
+// pero ignora el valor y siempre envía el único catálogo oficial.
 export async function enviarCatalogo(args: {
   numero_whatsapp: string;
-  coleccion: "pandora" | "taxco" | "tows" | "todos";
+  coleccion?: string;
   texto_acompanante: string;
 } & CommonArgs): Promise<ToolResult> {
   const supabase = createAdminClient();
 
-  // Construir el mensaje según la colección. "todos" manda el master
-  // con los 3 catálogos (Taxco, Pandora con precios, Pandora sin
-  // precios) en el formato que Mar usa.
-  let textoMensaje: string;
-  if (args.coleccion === "todos") {
-    const urlTaxco = await readConfig("catalogo_taxco_url", CATALOGOS.taxco);
-    const urlPandoraConPrecios = await readConfig(
-      "catalogo_pandora_url",
-      CATALOGOS.pandora,
-    );
-    const urlPandoraSinPrecios = await readConfig(
-      "catalogo_pandora_sin_precios_url",
-      CATALOGOS.pandora_sin_precios,
-    );
-    const apertura = args.texto_acompanante?.trim()
-      ? args.texto_acompanante.trim()
-      : "¡Hola! 🥳💖 Tenemos diferentes tipos de Joyería, da click en el enlace 🔗 que sea de tu agrado.";
-    textoMensaje = `${apertura}
-
-1️⃣ Catálogos de *Joyería de Taxco* Mayoreo (sets, anillos, collares, joyería para hombre, etc.):
-👉🏻 ${urlTaxco}
-
-2️⃣ Catálogos de *Pandora* Mayoreo
-
-Pandora con precios 🩷:
-👉🏻 ${urlPandoraConPrecios}
-
-*Pandora* sin precios 🩷:
-👉🏻 ${urlPandoraSinPrecios}`;
-  } else {
-    const claveMap = {
-      pandora: "catalogo_pandora_url",
-      taxco: "catalogo_taxco_url",
-      tows: "catalogo_tows_url",
-    } as const;
-    const url = await readConfig(claveMap[args.coleccion], CATALOGOS[args.coleccion]);
-    textoMensaje = `${args.texto_acompanante}\n\n${url}`;
-  }
+  const url = await readConfig("catalogo_taxco_url", CATALOGO_MAYOREO_DEFAULT);
+  const apertura = args.texto_acompanante?.trim()
+    ? args.texto_acompanante.trim()
+    : "¡Hola! 🥳💖 Te paso nuestro catálogo de mayoreo, con sets, anillos, collares y todas las piezas disponibles.";
+  const textoMensaje = `${apertura}\n\n👉🏻 ${url}`;
 
   const messages = [{ type: "text" as const, text: textoMensaje }];
   await sendToClient({
@@ -216,7 +181,7 @@ Pandora con precios 🩷:
     .from("estado_conversacion_actual")
     .update({
       catalogo_enviado: true,
-      catalogo_tipo: args.coleccion === "todos" ? "todos" : args.coleccion,
+      catalogo_tipo: "mayoreo",
       rama_activa: "R1",
       paso_actual: "catalogo_enviado",
       ultimo_tool_ejecutado: "enviar_catalogo",
@@ -224,7 +189,6 @@ Pandora con precios 🩷:
     })
     .eq("numero_whatsapp", args.numero_whatsapp);
 
-  // tipo := COALESCE(tipo, 'mayoreo'), estado lead_nueva → calificada
   const { data: lead } = await supabase
     .from("leads")
     .select("tipo,estado")
@@ -244,14 +208,14 @@ Pandora con precios 🩷:
     texto: args.texto_acompanante,
     tipo_mensaje: "texto",
     tool_ejecutada: "enviar_catalogo",
-    parametros_tool: { coleccion: args.coleccion },
+    parametros_tool: { coleccion: "mayoreo" },
   });
 
   return {
     tool: "enviar_catalogo",
     ok: true,
     outboundMessages: messages,
-    notes: [`Catálogo ${args.coleccion} enviado`],
+    notes: ["Catálogo de mayoreo enviado"],
   };
 }
 

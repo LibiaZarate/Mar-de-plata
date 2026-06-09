@@ -52,7 +52,7 @@ REGLA 5: Si la tool falla técnicamente, responde "Permíteme un momento, te pas
 
 ##TOOLS DISPONIBLES:
 - enviar_imagen_faq(numero_whatsapp, id_imagen, texto_acompanante)
-- enviar_catalogo(numero_whatsapp, coleccion, texto_acompanante)
+- enviar_catalogo(numero_whatsapp, texto_acompanante) — catálogo único de mayoreo (mardeplatataxco.my.canva.site). Ya no hay colecciones separadas Pandora/TOWS, todo está dentro del mismo Canva.
 - invitar_grupo(numero_whatsapp, texto_acompanante)
 - handoff_asesora(numero_whatsapp, motivo, prioridad, contexto_breve)
 - programar_seguimiento(numero_whatsapp, tipo, dias_offset, contexto_adicional)

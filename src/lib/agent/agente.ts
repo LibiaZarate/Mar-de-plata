@@ -180,10 +180,7 @@ Cuéntame qué te gustó cuando te des una vuelta 💕`;
 
   switch (tool) {
     case "enviar_catalogo": {
-      const c =
-        (input.verificador.accion_recomendada.parametros.coleccion as string) ??
-        "pandora";
-      return `¡Qué padre que te interesa la línea ${c}, linda! ✨ Te paso el catálogo completo. Échale ojo y me dices si algo te llama 💗`;
+      return "¡Qué padre que quieres ver el catálogo, linda! ✨ Te paso el catálogo de mayoreo completo. Échale ojo y me dices si algo te llama 💗";
     }
     case "enviar_imagen_faq": {
       const idImg = Number(
