@@ -1,18 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "nextjs",
-  "crons": [
-    {
-      "path": "/api/cron/seguimientos",
-      "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/cron/asignar-pendientes",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/secuencias",
-      "schedule": "*/15 * * * *"
-    }
-  ]
+  "framework": "nextjs"
 }
